@@ -1,0 +1,35 @@
+[workspace]
+members = [
+    "auth-service",
+    "election-service",
+    "vote-service",
+]
+resolver = "2"
+
+# Shared dependency versions across all workspace members
+[workspace.dependencies]
+tokio        = { version = "1",    features = ["full"] }
+axum         = { version = "0.7",  features = ["macros"] }
+tower-http   = { version = "0.5",  features = ["cors", "trace", "timeout"] }
+sqlx         = { version = "0.7",  features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"] }
+redis        = { version = "0.24", features = ["tokio-comp", "connection-manager"] }
+jsonwebtoken = { version = "9" }
+serde        = { version = "1",    features = ["derive"] }
+serde_json   = { version = "1" }
+uuid         = { version = "1",    features = ["v4", "serde"] }
+chrono       = { version = "0.4",  features = ["serde"] }
+thiserror    = { version = "1" }
+anyhow       = { version = "1" }
+tracing      = { version = "0.1" }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+dotenvy      = { version = "0.15" }
+
+[profile.release]
+opt-level     = 3
+lto           = "thin"
+codegen-units = 1
+strip         = true
+panic         = "abort"
+
+[profile.dev]
+opt-level = 1       # Faster incremental dev builds

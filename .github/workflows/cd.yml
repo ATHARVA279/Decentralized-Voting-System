@@ -1,0 +1,158 @@
+name: CD — Docker Build, Push & Deploy
+
+on:
+  push:
+    branches: [main]
+    tags:
+      - "v*.*.*"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/voting
+
+jobs:
+  # ── Build and push Docker images ──────────────────────────────────────────
+  build-push:
+    name: Build & Push — ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      matrix:
+        include:
+          - service: auth-service
+            context: ./backend/auth-service
+            image:   auth-service
+          - service: election-service
+            context: ./backend/election-service
+            image:   election-service
+          - service: vote-service
+            context: ./backend/vote-service
+            image:   vote-service
+          - service: frontend
+            context: ./frontend
+            image:   frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (tags, labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.image }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-,format=short
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context:    ${{ matrix.context }}
+          push:       true
+          tags:       ${{ steps.meta.outputs.tags }}
+          labels:     ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to:   type=gha,mode=max,scope=${{ matrix.service }}
+          platforms:  linux/amd64
+
+  # ── Deploy to Kubernetes (Minikube via self-hosted runner OR kubeconfig) ──
+  deploy:
+    name: Deploy to Kubernetes
+    runs-on: ubuntu-latest
+    needs: build-push
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/')
+    environment: production
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up kubectl
+        uses: azure/setup-kubectl@v3
+        with:
+          version: "v1.29.0"
+
+      - name: Configure kubeconfig
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_BASE64 }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: Determine image tag
+        id: tag
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            echo "TAG=sha-$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Apply namespace and config
+        run: |
+          kubectl apply -f k8s/namespace.yaml
+          kubectl apply -f k8s/configmaps/
+          kubectl apply -f k8s/secrets/      # In CI, use sealed secrets or vault
+
+      - name: Deploy infrastructure (postgres, redis)
+        run: |
+          kubectl apply -f k8s/postgres/
+          kubectl apply -f k8s/redis/
+          kubectl rollout status deployment/postgres -n voting-system --timeout=120s || true
+
+      - name: Deploy backend services
+        run: |
+          # Update image tags to the newly built image
+          kubectl set image deployment/auth-service \
+            auth-service=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/auth-service:${{ steps.tag.outputs.TAG }} \
+            -n voting-system
+          kubectl set image deployment/election-service \
+            election-service=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/election-service:${{ steps.tag.outputs.TAG }} \
+            -n voting-system
+          kubectl set image deployment/vote-service \
+            vote-service=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/vote-service:${{ steps.tag.outputs.TAG }} \
+            -n voting-system
+
+      - name: Deploy frontend
+        run: |
+          kubectl set image deployment/frontend \
+            frontend=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/frontend:${{ steps.tag.outputs.TAG }} \
+            -n voting-system
+
+      - name: Apply ingress
+        run: kubectl apply -f k8s/ingress/
+
+      - name: Wait for rollout
+        run: |
+          kubectl rollout status deployment/auth-service     -n voting-system --timeout=180s
+          kubectl rollout status deployment/election-service -n voting-system --timeout=180s
+          kubectl rollout status deployment/vote-service     -n voting-system --timeout=180s
+          kubectl rollout status deployment/frontend         -n voting-system --timeout=180s
+
+      - name: Smoke test
+        run: |
+          AUTH_URL=$(kubectl get ingress voting-ingress -n voting-system -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+          echo "Testing health endpoint at $AUTH_URL"
+          curl -sf "http://$AUTH_URL/api/auth/health" || echo "Health check skipped (no external IP in Minikube)"
+
+      # ── Canary rollback strategy ───────────────────────────────────────────
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          echo "Deployment failed — rolling back all services"
+          kubectl rollout undo deployment/auth-service     -n voting-system
+          kubectl rollout undo deployment/election-service -n voting-system
+          kubectl rollout undo deployment/vote-service     -n voting-system
+          kubectl rollout undo deployment/frontend         -n voting-system

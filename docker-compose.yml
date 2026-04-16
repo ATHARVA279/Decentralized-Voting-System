@@ -1,0 +1,144 @@
+version: "3.9"
+
+# ── LOCAL DEVELOPMENT STACK ───────────────────────────────────────────────────
+# Usage:
+#   docker-compose up -d        # Start all services
+#   docker-compose logs -f      # Follow logs
+#   docker-compose down -v      # Stop and remove volumes
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
+  # ── Infrastructure ──────────────────────────────────────────────────────────
+
+  redis:
+    image: redis:7-alpine
+    container_name: voting-redis
+    restart: unless-stopped
+    command: ["redis-server", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  # ── Backend Services ────────────────────────────────────────────────────────
+
+  auth-service:
+    build:
+      context: ./backend/auth-service
+      dockerfile: Dockerfile
+    container_name: voting-auth
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    environment:
+      PORT:         "${AUTH_PORT}"
+      DATABASE_URL: "${DATABASE_URL}"
+      REDIS_URL:    redis://redis:6379
+      JWT_SECRET:   "${JWT_SECRET}"
+      RUST_LOG:     "${RUST_LOG}"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:3001/health || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  election-service:
+    build:
+      context: ./backend/election-service
+      dockerfile: Dockerfile
+    container_name: voting-election
+    restart: unless-stopped
+    ports:
+      - "3002:3002"
+    environment:
+      PORT:         "${ELECTION_PORT}"
+      DATABASE_URL: "${DATABASE_URL}"
+      REDIS_URL:    redis://redis:6379
+      JWT_SECRET:   "${JWT_SECRET}"
+      RUST_LOG:     "${RUST_LOG}"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+
+  vote-service:
+    build:
+      context: ./backend/vote-service
+      dockerfile: Dockerfile
+    container_name: voting-vote
+    restart: unless-stopped
+    ports:
+      - "3003:3003"
+    environment:
+      PORT:         "${VOTE_PORT}"
+      DATABASE_URL: "${DATABASE_URL}"
+      REDIS_URL:    redis://redis:6379
+      JWT_SECRET:   "${JWT_SECRET}"
+      RUST_LOG:     "${RUST_LOG}"
+    dns:
+      - 8.8.8.8
+      - 1.1.1.1
+    depends_on:
+      redis:
+        condition: service_healthy
+      auth-service:
+        condition: service_healthy
+
+  # ── Frontend ────────────────────────────────────────────────────────────────
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: voting-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - auth-service
+      - election-service
+      - vote-service
+
+  # ── Observability ───────────────────────────────────────────────────────────
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: voting-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./k8s/monitoring/prometheus-docker.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=7d"
+
+  grafana:
+    image: grafana/grafana:10.4.0
+    container_name: voting-grafana
+    restart: unless-stopped
+    ports:
+      - "3100:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin123
+      GF_USERS_ALLOW_SIGN_UP:     "false"
+    depends_on:
+      - prometheus
+
+# End of Configuration
