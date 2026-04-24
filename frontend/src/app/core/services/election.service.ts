@@ -9,9 +9,8 @@ export interface Election {
   description:      string | null;
   start_time:       string;
   end_time:         string;
-  status:           'draft' | 'upcoming' | 'active' | 'completed' | 'cancelled';
+  status:           'upcoming' | 'active' | 'completed' | 'cancelled';
   created_by:       string;
-  max_votes_per_user: number;
   is_public_results:  boolean;
   created_at:       string;
   updated_at:       string;
@@ -20,10 +19,11 @@ export interface Election {
 export interface Candidate {
   id:          string;
   election_id: string;
+  user_id:     string;
   name:        string;
-  manifesto:   string | null;
-  photo_url:   string | null;
+  student_id:  string | null;
   department:  string | null;
+  manifesto:   string | null;
   position:    string | null;
   created_at:  string;
 }
@@ -43,7 +43,6 @@ export interface CreateElectionDto {
   description?:      string;
   start_time:        string;
   end_time:          string;
-  max_votes_per_user?: number;
   is_public_results?:  boolean;
 }
 

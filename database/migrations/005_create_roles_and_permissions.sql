@@ -10,8 +10,12 @@ BEGIN
 END
 $$;
 
--- Grant minimal required permissions
-GRANT CONNECT ON DATABASE postgres TO voting_app;
+-- Grant minimal required permissions on whichever database ran this migration.
+DO $$
+BEGIN
+    EXECUTE format('GRANT CONNECT ON DATABASE %I TO voting_app', current_database());
+END
+$$;
 GRANT USAGE ON SCHEMA public TO voting_app;
 
 -- Users table
@@ -46,5 +50,4 @@ DROP POLICY IF EXISTS votes_own_policy ON votes; CREATE POLICY votes_own_policy 
 -- ALTER TABLE votes FORCE ROW LEVEL SECURITY;
 
 COMMENT ON ROLE voting_app IS 'Least-privilege application role. Cannot UPDATE or DELETE votes or audit_log.';
-
 

@@ -17,22 +17,18 @@ spec:
     type: RollingUpdate
     rollingUpdate:
       maxSurge: 1
-      maxUnavailable: 0      # Zero-downtime rolling updates
+      maxUnavailable: 0
   template:
     metadata:
       labels:
         app: auth-service
         version: v1
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port:   "3001"
-        prometheus.io/path:   "/metrics"
     spec:
       terminationGracePeriodSeconds: 30
       containers:
         - name: auth-service
           image: voting/auth-service:latest
-          imagePullPolicy: IfNotPresent   # Use local image in Minikube
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 3001
               name: http
@@ -80,10 +76,6 @@ spec:
             initialDelaySeconds: 5
             periodSeconds: 5
             failureThreshold: 2
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sh", "-c", "sleep 5"]  # Drain connections before shutdown
 
 ---
 apiVersion: v1
@@ -112,7 +104,7 @@ spec:
     kind: Deployment
     name: auth-service
   minReplicas: 2
-  maxReplicas: 8
+  maxReplicas: 4
   metrics:
     - type: Resource
       resource:
@@ -120,9 +112,3 @@ spec:
         target:
           type: Utilization
           averageUtilization: 70
-    - type: Resource
-      resource:
-        name: memory
-        target:
-          type: Utilization
-          averageUtilization: 80

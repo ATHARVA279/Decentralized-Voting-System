@@ -8,7 +8,7 @@ metadata:
     app: vote-service
     tier: backend
 spec:
-  replicas: 3         # Higher baseline — vote service is the hot path
+  replicas: 2
   selector:
     matchLabels:
       app: vote-service
@@ -21,11 +21,8 @@ spec:
     metadata:
       labels:
         app: vote-service
-      annotations:
-        prometheus.io/scrape: "true"
-        prometheus.io/port:   "3003"
     spec:
-      terminationGracePeriodSeconds: 60   # Longer — allow WS connections to drain
+      terminationGracePeriodSeconds: 30
       containers:
         - name: vote-service
           image: voting/vote-service:latest
@@ -75,10 +72,6 @@ spec:
               port: 3003
             initialDelaySeconds: 5
             periodSeconds: 5
-          lifecycle:
-            preStop:
-              exec:
-                command: ["/bin/sh", "-c", "sleep 10"]
 
 ---
 apiVersion: v1
@@ -96,7 +89,6 @@ spec:
   type: ClusterIP
 
 ---
-# Vote service scales aggressively on election day
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
 metadata:
@@ -107,8 +99,8 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: vote-service
-  minReplicas: 3
-  maxReplicas: 15
+  minReplicas: 2
+  maxReplicas: 6
   metrics:
     - type: Resource
       resource:
@@ -116,18 +108,3 @@ spec:
         target:
           type: Utilization
           averageUtilization: 60
-    - type: Resource
-      resource:
-        name: memory
-        target:
-          type: Utilization
-          averageUtilization: 75
-  behavior:
-    scaleUp:
-      stabilizationWindowSeconds: 30    # Scale up fast on election day
-      policies:
-        - type: Pods
-          value: 3
-          periodSeconds: 60
-    scaleDown:
-      stabilizationWindowSeconds: 300   # Scale down slowly (5 min) to avoid flapping

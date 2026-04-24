@@ -8,9 +8,14 @@ import { NavbarComponent } from './shared/navbar/navbar.component';
   imports: [RouterOutlet, NavbarComponent],
   template: `
     <app-navbar />
-    <main style="position: relative; z-index: 1;">
+    <main class="app-main">
       <router-outlet />
     </main>
   `,
+  styles: [`
+    .app-main {
+      min-height: calc(100vh - 5rem);
+    }
+  `],
 })
 export class AppComponent {}

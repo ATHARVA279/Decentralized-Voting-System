@@ -102,6 +102,16 @@ async fn main() -> anyhow::Result<()> {
                 mw::require_auth,
             )),
         )
+        // User operations
+        .nest(
+            "/api/users",
+            Router::new()
+                .route("/search", get(handlers::auth::search_users))
+                .route_layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    mw::require_auth,
+                )),
+        )
         .with_state(state)
         .layer(cors)
         .layer(TraceLayer::new_for_http())

@@ -40,7 +40,13 @@ export class AuthService {
   constructor(private http: HttpClient, private router: Router) {}
 
   register(data: { email: string; password: string; full_name: string; student_id?: string; department?: string }) {
-    return this.http.post<AuthResponse>(`${this.API}/register`, data).pipe(
+    const payload = {
+      ...data,
+      student_id: data.student_id?.trim() || undefined,
+      department: data.department?.trim() || undefined,
+    };
+
+    return this.http.post<AuthResponse>(`${this.API}/register`, payload).pipe(
       tap(res => this.saveSession(res)),
     );
   }
@@ -76,6 +82,10 @@ export class AuthService {
     return this.http.get<User>(`${this.API}/me`).pipe(
       tap(user => this._user.set(user)),
     );
+  }
+
+  searchUsers(query: string) {
+    return this.http.get<User[]>(`${environment.authServiceUrl}/api/users/search`, { params: { q: query } });
   }
 
   private saveSession(res: AuthResponse) {

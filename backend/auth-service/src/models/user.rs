@@ -79,17 +79,6 @@ pub struct LoginRequest {
     pub password: String,
 }
 
-/// JWT Claims embedded in the access token
-#[derive(Debug, Serialize, Deserialize, Clone)]
-pub struct Claims {
-    pub sub:   String,   // user UUID
-    pub email: String,
-    pub role:  String,
-    pub iat:   i64,      // issued at (unix timestamp)
-    pub exp:   i64,      // expiry (unix timestamp)
-    pub jti:   String,   // unique token ID (for revocation)
-}
-
 /// Token pair returned on successful auth
 #[derive(Debug, Serialize)]
 pub struct TokenResponse {

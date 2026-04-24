@@ -40,15 +40,10 @@ else
 fi
 
 # ── 3. Start infrastructure ────────────────────────────────────────────────
-echo -e "\n${YELLOW}[3/5] Starting PostgreSQL and Redis...${NC}"
+echo -e "\n${YELLOW}[3/5] Starting Redis...${NC}"
 
-docker-compose up -d postgres redis
-
-echo "⏳ Waiting for PostgreSQL to be ready..."
-until docker-compose exec -T postgres pg_isready -U postgres > /dev/null 2>&1; do
-    sleep 1
-done
-echo "✅ PostgreSQL ready"
+docker-compose up -d redis
+echo "✅ Redis ready"
 
 # ── 4. Install frontend dependencies ──────────────────────────────────────
 echo -e "\n${YELLOW}[4/5] Installing Angular dependencies...${NC}"

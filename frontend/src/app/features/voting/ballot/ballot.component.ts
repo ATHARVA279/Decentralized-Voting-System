@@ -3,7 +3,6 @@ import { CommonModule }    from '@angular/common';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ElectionService, Candidate, Election } from '../../../core/services/election.service';
 import { VoteService }     from '../../../core/services/vote.service';
-import { AuthService }     from '../../../core/services/auth.service';
 
 @Component({
   selector: 'app-ballot',
@@ -13,7 +12,7 @@ import { AuthService }     from '../../../core/services/auth.service';
     <div class="page-wrapper container fade-in">
       @if (alreadyVoted()) {
         <div class="already-voted-banner">
-          <span>✅</span>
+          <span><i class="ri-checkbox-circle-fill" style="color: #22c55e;"></i></span>
           <div>
             <strong>You've already voted!</strong>
             <p>Your vote has been recorded securely on the ledger.</p>
@@ -26,7 +25,7 @@ import { AuthService }     from '../../../core/services/auth.service';
         <p class="text-muted">{{ election()?.description }}</p>
         @if (election()) {
           <div class="time-info text-sm text-muted">
-            ⏰ Closes {{ formatDate(election()!.end_time) }}
+            <i class="ri-time-line"></i> Closes {{ formatDate(election()!.end_time) }}
           </div>
         }
       </div>
@@ -34,6 +33,10 @@ import { AuthService }     from '../../../core/services/auth.service';
       @if (loading()) {
         <div class="loading-grid">
           @for (i of [1,2,3]; track i) { <div class="skeleton-card"></div> }
+        </div>
+      } @else if (election() && election()!.status !== 'active') {
+        <div class="alert alert-error">
+          Voting is not open for this election yet. It will become available when the start time is reached.
         </div>
       } @else {
         <div class="candidates-grid">
@@ -50,7 +53,7 @@ import { AuthService }     from '../../../core/services/auth.service';
                 @if (c.manifesto) { <p class="manifesto text-sm text-muted">{{ c.manifesto }}</p> }
               </div>
               <div class="selection-indicator">
-                @if (selectedId() === c.id) { ✓ }
+                @if (selectedId() === c.id) { <i class="ri-check-line"></i> }
               </div>
             </div>
           }
@@ -58,8 +61,8 @@ import { AuthService }     from '../../../core/services/auth.service';
 
         @if (!alreadyVoted()) {
           <div class="vote-action">
-            @if (error()) { <div class="alert alert-error">⚠️ {{ error() }}</div> }
-            @if (success()) { <div class="alert alert-success">✅ {{ success() }}</div> }
+            @if (error()) { <div class="alert alert-error"><i class="ri-error-warning-line"></i> {{ error() }}</div> }
+            @if (success()) { <div class="alert alert-success"><i class="ri-checkbox-circle-line"></i> {{ success() }}</div> }
             <button class="btn btn-primary btn-lg"
                     [disabled]="!selectedId() || casting()"
                     (click)="confirmVote()">
@@ -67,7 +70,7 @@ import { AuthService }     from '../../../core/services/auth.service';
               {{ casting() ? 'Recording your vote…' : 'Cast My Vote' }}
             </button>
             <p class="text-xs text-muted text-center">
-              🔒 Your vote is final and cannot be changed after submission
+              <i class="ri-lock-2-line"></i> Your vote is final and cannot be changed after submission
             </p>
           </div>
         }
@@ -111,7 +114,6 @@ export class BallotComponent implements OnInit {
   private router  = inject(Router);
   private elecSvc = inject(ElectionService);
   private voteSvc = inject(VoteService);
-  private auth    = inject(AuthService);
 
   election    = signal<Election | null>(null);
   candidates  = signal<Candidate[]>([]);
@@ -133,6 +135,10 @@ export class BallotComponent implements OnInit {
 
   confirmVote() {
     if (!this.selectedId()) return;
+    if (this.election()?.status !== 'active') {
+      this.error.set('Voting is not open for this election yet.');
+      return;
+    }
     this.casting.set(true);
     this.voteSvc.cast({
       election_id:  this.election()!.id,

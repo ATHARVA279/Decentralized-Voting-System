@@ -4,8 +4,7 @@ use argon2::{
 };
 use axum::{extract::State, Json};
 use chrono::Utc;
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
-use redis::AsyncCommands;
+use jsonwebtoken::{encode, EncodingKey, Header};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use uuid::Uuid;
@@ -15,9 +14,10 @@ use crate::{
     db::AppState,
     errors::AppError,
     models::user::{
-        Claims, LoginRequest, RegisterRequest, TokenResponse, User, UserResponse,
+        LoginRequest, RegisterRequest, TokenResponse, User, UserResponse,
     },
 };
+use shared::Claims;
 
 // Access token: 15 minutes; Refresh token: 7 days
 const ACCESS_TOKEN_TTL:  i64 = 15 * 60;
@@ -29,6 +29,18 @@ pub async fn register(
     Json(req): Json<RegisterRequest>,
 ) -> Result<Json<TokenResponse>, AppError> {
     req.validate().map_err(|e| AppError::Validation(e.to_string()))?;
+    let student_id = req
+        .student_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned);
+    let department = req
+        .department
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned);
 
     // Check for existing user
     let existing = sqlx::query_scalar::<_, i64>(
@@ -61,8 +73,8 @@ pub async fn register(
     .bind(&req.email)
     .bind(&pw_hash)
     .bind(&req.full_name)
-    .bind(&req.student_id)
-    .bind(&req.department)
+    .bind(&student_id)
+    .bind(&department)
     .fetch_one(&state.db)
     .await?;
 
@@ -136,14 +148,12 @@ pub async fn refresh_token(
         user_id: Uuid,
         expires_at: chrono::DateTime<chrono::Utc>,
         revoked: bool,
-        role: String,
     }
 
     let row = sqlx::query_as::<_, RefreshRow>(
         r#"
-        SELECT rt.user_id, rt.expires_at, rt.revoked, u.role::text as role
+        SELECT rt.user_id, rt.expires_at, rt.revoked
         FROM refresh_tokens rt
-        JOIN users u ON u.id = rt.user_id
         WHERE rt.token_hash = $1
         "#
     )
@@ -235,7 +245,7 @@ pub async fn logout(
 async fn generate_tokens(
     user:       &User,
     jwt_secret: &str,
-    redis:      &redis::aio::ConnectionManager,
+    _redis:     &redis::aio::ConnectionManager,
 ) -> Result<TokenResponse, AppError> {
     let now = Utc::now().timestamp();
     let jti = Uuid::new_v4().to_string();
@@ -258,8 +268,8 @@ async fn generate_tokens(
 
     // Generate opaque refresh token
     let refresh_token = Uuid::new_v4().to_string() + &Uuid::new_v4().to_string();
-    let token_hash    = hex::encode(Sha256::digest(refresh_token.as_bytes()));
-    let expires_at    = Utc::now() + chrono::Duration::seconds(REFRESH_TOKEN_TTL);
+    let _token_hash   = hex::encode(Sha256::digest(refresh_token.as_bytes()));
+    let _expires_at   = Utc::now() + chrono::Duration::seconds(REFRESH_TOKEN_TTL);
 
     // Store refresh token in DB (hashed)
     // (In production this would be its own DB table; simplified here)
@@ -310,4 +320,43 @@ async fn write_audit_log(
     .await?;
 
     Ok(())
+}
+
+use axum::extract::Query;
+use serde::{Deserialize, Serialize};
+
+#[derive(Deserialize)]
+pub struct SearchQuery {
+    pub q: String,
+}
+
+#[derive(Serialize, sqlx::FromRow)]
+pub struct UserSearchResponse {
+    pub id: Uuid,
+    pub email: String,
+    pub full_name: String,
+    pub student_id: Option<String>,
+    pub department: Option<String>,
+}
+
+/// GET /api/users/search?q=...
+pub async fn search_users(
+    State(state): State<Arc<AppState>>,
+    Query(params): Query<SearchQuery>,
+) -> Result<Json<Vec<UserSearchResponse>>, AppError> {
+    let search_term = format!("%{}%", params.q);
+
+    let users = sqlx::query_as::<_, UserSearchResponse>(
+        r#"
+        SELECT id, email, full_name, student_id, department
+        FROM users
+        WHERE full_name ILIKE $1 OR email ILIKE $1 OR student_id ILIKE $1
+        LIMIT 20
+        "#
+    )
+    .bind(search_term)
+    .fetch_all(&state.db)
+    .await?;
+
+    Ok(Json(users))
 }

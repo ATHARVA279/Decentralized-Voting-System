@@ -9,7 +9,7 @@ path = "src/main.rs"
 
 [dependencies]
 tokio        = { version = "1",    features = ["full"] }
-axum         = { version = "0.7",  features = ["macros", "ws"] }
+axum         = { version = "0.7",  features = ["macros"] }
 tower        = { version = "0.4",  features = ["full"] }
 tower-http   = { version = "0.5",  features = ["cors", "trace", "timeout"] }
 sqlx         = { version = "0.7",  features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"] }
@@ -25,8 +25,8 @@ thiserror    = "1"
 anyhow       = "1"
 tracing      = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
-tokio-stream = { version = "0.1",  features = ["sync"] }
 dotenvy      = "0.15"
+shared       = { path = "../shared" }
 
 [profile.release]
 opt-level = 3

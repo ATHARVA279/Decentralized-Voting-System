@@ -2,7 +2,9 @@ use axum::{
     extract::{Path, Query, State},
     Extension, Json,
 };
+use chrono::Utc;
 use serde::Deserialize;
+use shared::Claims;
 use std::sync::Arc;
 use uuid::Uuid;
 use validator::Validate;
@@ -12,7 +14,7 @@ use crate::{
     errors::AppError,
     models::election::{
         AddCandidateRequest, Candidate, CreateElectionRequest, Election,
-        ElectionResult, UpdateElectionRequest, Claims,
+        ElectionResult, UpdateElectionRequest,
     },
 };
 
@@ -28,6 +30,8 @@ pub async fn list_elections(
     State(state): State<Arc<AppState>>,
     Query(q): Query<ListQuery>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    refresh_election_statuses(&state.db).await?;
+
     let limit  = q.limit.unwrap_or(20).min(100);
     let offset = q.offset.unwrap_or(0);
 
@@ -67,6 +71,8 @@ pub async fn get_election(
     State(state): State<Arc<AppState>>,
     Path(id): Path<Uuid>,
 ) -> Result<Json<Election>, AppError> {
+    refresh_election_statuses(&state.db).await?;
+
     let election = sqlx::query_as::<_, Election>(
         "SELECT * FROM elections WHERE id = $1"
     )
@@ -94,11 +100,12 @@ pub async fn create_election(
     }
 
     let creator_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::TokenInvalid)?;
+    let status = status_for_times(req.start_time, req.end_time);
 
     let election = sqlx::query_as::<_, Election>(
         r#"
-        INSERT INTO elections (title, description, start_time, end_time, created_by, max_votes_per_user, is_public_results)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        INSERT INTO elections (title, description, start_time, end_time, status, created_by, is_public_results)
+        VALUES ($1, $2, $3, $4, $5::election_status, $6, $7)
         RETURNING *
         "#,
     )
@@ -106,8 +113,8 @@ pub async fn create_election(
     .bind(&req.description)
     .bind(req.start_time)
     .bind(req.end_time)
+    .bind(status)
     .bind(creator_id)
-    .bind(req.max_votes_per_user.unwrap_or(1))
     .bind(req.is_public_results.unwrap_or(true))
     .fetch_one(&state.db)
     .await?;
@@ -150,7 +157,12 @@ pub async fn update_election(
             title       = COALESCE($1, title),
             description = COALESCE($2, description),
             start_time  = COALESCE($3, start_time),
-            end_time    = COALESCE($4, end_time)
+            end_time    = COALESCE($4, end_time),
+            status      = CASE
+                WHEN COALESCE($4, end_time) <= NOW() THEN 'completed'
+                WHEN COALESCE($3, start_time) <= NOW() THEN 'active'
+                ELSE 'upcoming'
+            END::election_status
         WHERE id = $5
         RETURNING *
         "#,
@@ -166,7 +178,7 @@ pub async fn update_election(
     Ok(Json(updated))
 }
 
-/// DELETE /api/elections/:id — admin, only draft elections
+/// DELETE /api/elections/:id — admin, only elections that have not started
 pub async fn delete_election(
     State(state): State<Arc<AppState>>,
     Extension(claims): Extension<Claims>,
@@ -182,8 +194,8 @@ pub async fn delete_election(
         .await?
         .ok_or(AppError::NotFound("Election not found".into()))?;
 
-    if election.status != crate::models::election::ElectionStatus::Draft {
-        return Err(AppError::Validation("Only draft elections can be deleted".into()));
+    if election.status != crate::models::election::ElectionStatus::Upcoming {
+        return Err(AppError::Validation("Only upcoming elections can be deleted".into()));
     }
 
     sqlx::query("DELETE FROM elections WHERE id = $1")
@@ -200,7 +212,13 @@ pub async fn list_candidates(
     Path(id): Path<Uuid>,
 ) -> Result<Json<Vec<Candidate>>, AppError> {
     let candidates = sqlx::query_as::<_, Candidate>(
-        "SELECT * FROM candidates WHERE election_id = $1 ORDER BY name"
+        r#"
+        SELECT c.id, c.election_id, c.user_id, u.full_name as name, u.student_id, u.department, c.manifesto, c.position, c.created_at
+        FROM candidates c
+        JOIN users u ON c.user_id = u.id
+        WHERE c.election_id = $1
+        ORDER BY u.full_name
+        "#
     )
     .bind(id)
     .fetch_all(&state.db)
@@ -232,21 +250,58 @@ pub async fn add_candidate(
         return Err(AppError::Validation("Cannot add candidates to completed/cancelled elections".into()));
     }
 
-    let candidate = sqlx::query_as::<_, Candidate>(
+    // Verify user exists and get details
+    #[derive(sqlx::FromRow)]
+    struct UserData {
+        full_name: String,
+        student_id: Option<String>,
+        department: Option<String>,
+    }
+
+    let user = sqlx::query_as::<_, UserData>("SELECT full_name, student_id, department FROM users WHERE id = $1")
+        .bind(req.user_id)
+        .fetch_optional(&state.db)
+        .await?
+        .ok_or(AppError::NotFound("User not found".into()))?;
+
+    // Check if already a candidate
+    let existing = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM candidates WHERE election_id = $1 AND user_id = $2")
+        .bind(id)
+        .bind(req.user_id)
+        .fetch_one(&state.db)
+        .await?;
+
+    if existing > 0 {
+        return Err(AppError::Validation("User is already a candidate for this election".into()));
+    }
+
+    let candidate_id = Uuid::new_v4();
+
+    sqlx::query(
         r#"
-        INSERT INTO candidates (election_id, name, manifesto, photo_url, department, position)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        RETURNING *
-        "#,
+        INSERT INTO candidates (id, election_id, user_id, manifesto, position)
+        VALUES ($1, $2, $3, $4, $5)
+        "#
     )
+    .bind(candidate_id)
     .bind(id)
-    .bind(&req.name)
+    .bind(req.user_id)
     .bind(&req.manifesto)
-    .bind(&req.photo_url)
-    .bind(&req.department)
     .bind(&req.position)
-    .fetch_one(&state.db)
+    .execute(&state.db)
     .await?;
+
+    let candidate = Candidate {
+        id: candidate_id,
+        election_id: id,
+        user_id: req.user_id,
+        name: user.full_name,
+        student_id: user.student_id,
+        department: user.department,
+        manifesto: req.manifesto,
+        position: req.position,
+        created_at: Utc::now(),
+    };
 
     Ok(Json(candidate))
 }
@@ -316,4 +371,42 @@ pub async fn get_participation(
             "total_votes_cast": 0
         }))),
     }
+}
+
+fn status_for_times(
+    start_time: chrono::DateTime<chrono::Utc>,
+    end_time: chrono::DateTime<chrono::Utc>,
+) -> &'static str {
+    let now = Utc::now();
+
+    if end_time <= now {
+        "completed"
+    } else if start_time <= now {
+        "active"
+    } else {
+        "upcoming"
+    }
+}
+
+async fn refresh_election_statuses(db: &sqlx::PgPool) -> Result<(), AppError> {
+    sqlx::query(
+        r#"
+        UPDATE elections
+        SET status = CASE
+                WHEN end_time <= NOW() THEN 'completed'
+                WHEN start_time <= NOW() THEN 'active'
+                ELSE 'upcoming'
+            END::election_status
+        WHERE status != 'cancelled'
+          AND status IS DISTINCT FROM CASE
+                WHEN end_time <= NOW() THEN 'completed'
+                WHEN start_time <= NOW() THEN 'active'
+                ELSE 'upcoming'
+            END::election_status
+        "#
+    )
+    .execute(db)
+    .await?;
+
+    Ok(())
 }

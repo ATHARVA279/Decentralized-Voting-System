@@ -4,7 +4,7 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 DO $$ BEGIN
-    CREATE TYPE user_role AS ENUM ('student', 'admin', 'observer');
+    CREATE TYPE user_role AS ENUM ('voter', 'admin');
 EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
     full_name     VARCHAR(255) NOT NULL,
     student_id    VARCHAR(50)  UNIQUE,
     department    VARCHAR(100),
-    role          user_role    NOT NULL DEFAULT 'student',
+    role          user_role    NOT NULL DEFAULT 'voter',
     is_active     BOOLEAN      NOT NULL DEFAULT TRUE,
     email_verified BOOLEAN     NOT NULL DEFAULT FALSE,
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
@@ -54,8 +54,7 @@ CREATE TABLE IF NOT EXISTS refresh_tokens (
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_id ON refresh_tokens(user_id);
 CREATE INDEX IF NOT EXISTS idx_refresh_tokens_token   ON refresh_tokens(token_hash);
 
-COMMENT ON TABLE users IS 'Stores all system users: students, admins, and observers';
+COMMENT ON TABLE users IS 'Stores all system users: voters and admins';
 COMMENT ON COLUMN users.student_id IS 'University-assigned student ID, null for admins';
-COMMENT ON COLUMN users.role IS 'student: can vote; admin: manages elections; observer: read-only';
-
+COMMENT ON COLUMN users.role IS 'voter: can vote; admin: manages elections';
 

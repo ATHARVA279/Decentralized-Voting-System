@@ -17,11 +17,11 @@ ON CONFLICT (email) DO NOTHING;
 -- ── Create student users ──────────────────────────────────────────────────────
 INSERT INTO users (email, password_hash, full_name, student_id, department, role, is_active, email_verified)
 VALUES
-    ('priya.sharma@university.edu',   '$argon2id$v=19$placeholder', 'Priya Sharma',   'STU-2024-001', 'Computer Science',       'student', TRUE, TRUE),
-    ('arjun.patel@university.edu',    '$argon2id$v=19$placeholder', 'Arjun Patel',    'STU-2024-002', 'Electronics',            'student', TRUE, TRUE),
-    ('sneha.reddy@university.edu',    '$argon2id$v=19$placeholder', 'Sneha Reddy',    'STU-2024-003', 'Civil',                  'student', TRUE, TRUE),
-    ('rahul.gupta@university.edu',    '$argon2id$v=19$placeholder', 'Rahul Gupta',    'STU-2024-004', 'Mechanical',             'student', TRUE, TRUE),
-    ('aisha.khan@university.edu',     '$argon2id$v=19$placeholder', 'Aisha Khan',     'STU-2024-005', 'Business Administration', 'student', TRUE, TRUE)
+    ('priya.sharma@university.edu',   '$argon2id$v=19$placeholder', 'Priya Sharma',   'STU-2024-001', 'Computer Science',       'voter', TRUE, TRUE),
+    ('arjun.patel@university.edu',    '$argon2id$v=19$placeholder', 'Arjun Patel',    'STU-2024-002', 'Electronics',            'voter', TRUE, TRUE),
+    ('sneha.reddy@university.edu',    '$argon2id$v=19$placeholder', 'Sneha Reddy',    'STU-2024-003', 'Civil',                  'voter', TRUE, TRUE),
+    ('rahul.gupta@university.edu',    '$argon2id$v=19$placeholder', 'Rahul Gupta',    'STU-2024-004', 'Mechanical',             'voter', TRUE, TRUE),
+    ('aisha.khan@university.edu',     '$argon2id$v=19$placeholder', 'Aisha Khan',     'STU-2024-005', 'Business Administration', 'voter', TRUE, TRUE)
 ON CONFLICT (email) DO NOTHING;
 
 -- ── Upcoming election ─────────────────────────────────────────────────────────
@@ -51,32 +51,35 @@ FROM users WHERE email = 'admin@university.edu'
 ON CONFLICT DO NOTHING;
 
 -- ── Candidates for the active election ────────────────────────────────────────
-INSERT INTO candidates (election_id, name, manifesto, department, position)
+INSERT INTO candidates (election_id, user_id, manifesto, position)
 SELECT
     e.id,
-    'Vikram Nair',
-    'I will bring fresh ideas and energy to our cultural scene. My vision is to organize at least one major cultural event every month and ensure all departments participate.',
-    'Arts & Humanities',
+    u.id,
+    'I will bring fresh ideas and energy to our cultural scene.',
     'Cultural Secretary Candidate'
-FROM elections e WHERE e.title = 'Cultural Secretary Election 2024'
+FROM elections e
+CROSS JOIN users u
+WHERE e.title = 'Cultural Secretary Election 2024' AND u.email = 'priya.sharma@university.edu'
 ON CONFLICT DO NOTHING;
 
-INSERT INTO candidates (election_id, name, manifesto, department, position)
+INSERT INTO candidates (election_id, user_id, manifesto, position)
 SELECT
     e.id,
-    'Meera Iyer',
-    'As a passionate artist and organizer, I will create inclusive cultural events that celebrate our diverse student community. I will also launch an annual inter-college arts festival.',
-    'Computer Science',
+    u.id,
+    'As a passionate artist and organizer, I will create inclusive cultural events.',
     'Cultural Secretary Candidate'
-FROM elections e WHERE e.title = 'Cultural Secretary Election 2024'
+FROM elections e
+CROSS JOIN users u
+WHERE e.title = 'Cultural Secretary Election 2024' AND u.email = 'arjun.patel@university.edu'
 ON CONFLICT DO NOTHING;
 
-INSERT INTO candidates (election_id, name, manifesto, department, position)
+INSERT INTO candidates (election_id, user_id, manifesto, position)
 SELECT
     e.id,
-    'Kabir Singh',
-    'With 2 years of event management experience, I will professionalize our cultural events, secure external sponsorships, and create a dedicated cultural fund.',
-    'Business Administration',
+    u.id,
+    'With 2 years of event management experience, I will professionalize our cultural events.',
     'Cultural Secretary Candidate'
-FROM elections e WHERE e.title = 'Cultural Secretary Election 2024'
+FROM elections e
+CROSS JOIN users u
+WHERE e.title = 'Cultural Secretary Election 2024' AND u.email = 'sneha.reddy@university.edu'
 ON CONFLICT DO NOTHING;

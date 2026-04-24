@@ -1,6 +1,6 @@
 import { Component, inject } from '@angular/core';
 import { CommonModule }  from '@angular/common';
-import { RouterLink, Router, RouterLinkActive } from '@angular/router';
+import { RouterLink, RouterLinkActive } from '@angular/router';
 import { AuthService }   from '../../core/services/auth.service';
 
 @Component({
@@ -9,62 +9,197 @@ import { AuthService }   from '../../core/services/auth.service';
   imports: [CommonModule, RouterLink, RouterLinkActive],
   template: `
     <nav class="navbar">
-      <div class="nav-inner">
-        <a routerLink="/dashboard" class="nav-brand">
-          <span class="brand-icon">🗳️</span>
-          <span class="brand-name">VoteChain</span>
-        </a>
+      <div class="container nav-shell">
+        <div class="nav-inner surface-panel">
+          <a routerLink="/dashboard" class="nav-brand">
+            <span class="brand-mark">V</span>
+            <span class="brand-copy">
+              <span class="brand-name">VoteChain</span>
+              <span class="brand-subtitle">Campus voting workspace</span>
+            </span>
+          </a>
 
-        @if (auth.isLoggedIn()) {
-          <div class="nav-links">
-            <a routerLink="/dashboard" routerLinkActive="active" class="nav-link">Dashboard</a>
-            <a routerLink="/elections" routerLinkActive="active" class="nav-link">Elections</a>
-            @if (auth.isAdmin()) {
-              <a routerLink="/admin" routerLinkActive="active" class="nav-link nav-link-admin">⚙️ Admin</a>
-            }
-          </div>
-
-          <div class="nav-user">
-            <div class="user-chip">
-              <div class="user-avatar">{{ auth.user()?.full_name?.charAt(0) }}</div>
-              <div class="user-meta">
-                <span class="user-name">{{ auth.user()?.full_name }}</span>
-                <span class="user-role">{{ auth.user()?.role }}</span>
-              </div>
+          @if (auth.isLoggedIn()) {
+            <div class="nav-links">
+              <a routerLink="/dashboard" routerLinkActive="active" class="nav-link">Dashboard</a>
+              <a routerLink="/elections" routerLinkActive="active" class="nav-link">Elections</a>
             </div>
-            <button class="btn btn-ghost btn-sm" (click)="logout()">Sign out</button>
-          </div>
-        }
+
+            <div class="nav-user">
+              <div class="user-chip">
+                <div class="user-avatar">{{ auth.user()?.full_name?.charAt(0) }}</div>
+                <div class="user-meta">
+                  <span class="user-name">{{ auth.user()?.full_name }}</span>
+                  <span class="user-role">{{ auth.user()?.role }}</span>
+                </div>
+              </div>
+              <button class="btn btn-secondary btn-sm" (click)="logout()">Sign out</button>
+            </div>
+          }
+        </div>
       </div>
     </nav>
   `,
   styles: [`
     .navbar {
-      position: sticky; top: 0; z-index: 100;
-      background: rgba(13,15,26,0.85); backdrop-filter: blur(20px);
-      border-bottom: 1px solid var(--clr-border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      padding: 1.5rem 0 1rem;
+      background: transparent;
+      pointer-events: none;
     }
-    .nav-inner { max-width: 1200px; margin: 0 auto; padding: 0 1.5rem; height: 64px; display: flex; align-items: center; gap: 2rem; }
-    .nav-brand { display: flex; align-items: center; gap: 0.6rem; text-decoration: none; flex-shrink: 0; }
-    .brand-icon { font-size: 1.4rem; }
-    .brand-name { font-size: 1.1rem; font-weight: 800; background: linear-gradient(135deg, var(--clr-primary), var(--clr-secondary)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
-    .nav-links { display: flex; align-items: center; gap: 0.25rem; flex: 1; }
-    .nav-link { padding: 0.4rem 0.9rem; border-radius: 8px; font-size: 0.9rem; font-weight: 500; color: var(--clr-text-muted); text-decoration: none; transition: all 0.2s; }
-    .nav-link:hover { color: var(--clr-text); background: var(--clr-surface-2); }
-    .nav-link.active { color: var(--clr-primary); background: rgba(108,99,255,0.1); }
-    .nav-link-admin { color: var(--clr-warning) !important; }
-    .nav-user { display: flex; align-items: center; gap: 0.75rem; margin-left: auto; }
-    .user-chip { display: flex; align-items: center; gap: 0.6rem; }
-    .user-avatar { width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, var(--clr-primary), var(--clr-secondary)); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 0.85rem; color: white; flex-shrink: 0; }
-    .user-meta { display: flex; flex-direction: column; line-height: 1.2; }
-    .user-name { font-size: 0.85rem; font-weight: 600; color: var(--clr-text); }
-    .user-role { font-size: 0.7rem; color: var(--clr-text-muted); text-transform: capitalize; }
-    @media (max-width: 640px) { .nav-links { display: none; } .user-meta { display: none; } }
+
+    .nav-shell {
+      padding-bottom: 0;
+      pointer-events: auto;
+    }
+
+    .nav-inner {
+      display: flex;
+      align-items: center;
+      gap: 1.5rem;
+      min-height: 4.5rem;
+      padding: 0 1rem;
+    }
+
+    .nav-brand {
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      min-width: 0;
+    }
+
+    .brand-mark {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 2.25rem;
+      height: 2.25rem;
+      border-radius: var(--radius-sm);
+      background: var(--text-strong);
+      color: var(--text-inverse);
+      font-weight: 700;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .brand-copy {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .brand-name {
+      color: var(--text-strong);
+      font-size: 1rem;
+      font-weight: 600;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-subtitle {
+      color: var(--text-muted);
+      font-size: 0.82rem;
+    }
+
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+      margin-left: auto;
+    }
+
+    .nav-link {
+      padding: 0.5rem 0.875rem;
+      color: var(--text-muted);
+      border-radius: var(--radius-sm);
+      font-size: 0.94rem;
+      font-weight: 500;
+      transition: background-color var(--transition-fast), color var(--transition-fast);
+    }
+
+    .nav-link:hover,
+    .nav-link.active {
+      color: var(--text-strong);
+      background: rgba(38, 198, 218, 0.12);
+    }
+
+    .nav-user {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .user-chip {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      padding: 0.35rem 0.5rem 0.35rem 0.35rem;
+      border: 1px solid var(--border-soft);
+      border-radius: var(--radius-full);
+      background: rgba(16, 27, 34, 0.92);
+      box-shadow: var(--shadow-xs);
+    }
+
+    .user-avatar {
+      display: grid;
+      place-items: center;
+      width: 2rem;
+      height: 2rem;
+      border-radius: 50%;
+      background: rgba(38, 198, 218, 0.14);
+      color: var(--text-strong);
+      font-weight: 600;
+      font-size: 0.875rem;
+    }
+
+    .user-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      min-width: 0;
+    }
+
+    .user-name {
+      color: var(--text-strong);
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+
+    .user-role {
+      color: var(--text-muted);
+      font-size: 0.75rem;
+      text-transform: capitalize;
+    }
+
+    @media (max-width: 900px) {
+      .nav-inner {
+        flex-wrap: wrap;
+        justify-content: space-between;
+      }
+
+      .nav-links {
+        order: 3;
+        width: 100%;
+        margin-left: 0;
+        padding-top: 0.35rem;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .brand-subtitle,
+      .user-meta {
+        display: none;
+      }
+
+      .nav-user {
+        gap: 0.55rem;
+      }
+    }
   `],
 })
 export class NavbarComponent {
-  auth   = inject(AuthService);
-  router = inject(Router);
+  auth = inject(AuthService);
 
   logout() {
     this.auth.logout().subscribe({ error: () => {} });

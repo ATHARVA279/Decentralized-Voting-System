@@ -1,11 +1,6 @@
-use axum::{
-    extract::ws::{WebSocket, WebSocketUpgrade},
-    routing::{get, post},
-    Router,
-};
+use axum::{routing::{get, post}, Router};
 use sqlx::postgres::PgPoolOptions;
 use std::{sync::Arc, time::Duration};
-use tokio::sync::broadcast;
 use tower_http::{cors::{Any, CorsLayer}, timeout::TimeoutLayer, trace::TraceLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -45,16 +40,10 @@ async fn main() -> anyhow::Result<()> {
     let redis_client  = redis::Client::open(redis_url)?;
     let redis_manager = redis::aio::ConnectionManager::new(redis_client).await?;
 
-    // Broadcast channel for live vote count updates (WebSocket)
-    // capacity 1024 messages
-    let (tx, _rx) = broadcast::channel::<String>(1024);
-    let vote_broadcast = Arc::new(tx);
-
     let state = Arc::new(AppState {
         db: db_pool,
         redis: redis_manager,
         jwt_secret,
-        vote_broadcast,
     });
 
     let cors = CorsLayer::new()
@@ -72,8 +61,6 @@ async fn main() -> anyhow::Result<()> {
                 mw::require_auth,
             )),
         )
-        // WebSocket route (auth checked inside handler via query param token)
-        .route("/api/votes/live/:election_id", get(handlers::vote::live_results_ws))
         .with_state(state)
         .layer(cors)
         .layer(TraceLayer::new_for_http())

@@ -160,7 +160,7 @@ The `audit_log` table is protected by **database-level triggers** that raise exc
 git clone https://github.com/your-org/Decentralized-Voting-System.git
 cd Decentralized-Voting-System
 
-# 2. Start the entire stack (first run takes ~3 min to build Rust images)
+# 2. Start the app services (uses external `DATABASE_URL` from `.env`)
 docker-compose up -d
 
 # 3. Check all services are healthy
@@ -410,7 +410,7 @@ Configured at NGINX Ingress level:
 ```bash
 # Auth service
 cd backend/auth-service
-DATABASE_URL=postgres://postgres:devpassword@localhost:5432/voting_db \
+DATABASE_URL=postgres://YOUR_SUPABASE_DB_USER:YOUR_SUPABASE_DB_PASSWORD@YOUR_SUPABASE_HOST:5432/postgres \
 REDIS_URL=redis://localhost:6379 \
 JWT_SECRET=local_dev_secret_at_least_32_characters \
 cargo run

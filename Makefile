@@ -93,9 +93,9 @@ k8s-up:
 k8s-build:
 	@echo "🐳 Building images into Minikube daemon..."
 	eval $$(minikube docker-env) && \
-	  docker build -t voting/auth-service:latest     ./backend/auth-service && \
-	  docker build -t voting/election-service:latest ./backend/election-service && \
-	  docker build -t voting/vote-service:latest     ./backend/vote-service && \
+	  docker build -t voting/auth-service:latest     -f ./backend/auth-service/Dockerfile ./backend && \
+	  docker build -t voting/election-service:latest -f ./backend/election-service/Dockerfile ./backend && \
+	  docker build -t voting/vote-service:latest     -f ./backend/vote-service/Dockerfile ./backend && \
 	  docker build -t voting/frontend:latest         ./frontend
 	@echo "✅  Images built"
 
@@ -113,11 +113,6 @@ k8s-deploy:
 	kubectl apply -f k8s/frontend/
 	kubectl apply -f k8s/ingress/
 	@echo "✅  Deployed. Open http://voting.local"
-
-k8s-monitoring:
-	kubectl apply -f k8s/monitoring/
-	@echo "✅  Prometheus + Grafana deployed"
-	@echo "    Grafana: kubectl port-forward svc/grafana-service 3000:3000 -n voting-system"
 
 k8s-status:
 	kubectl output pods,svc,ingress,hpa -n voting-system
