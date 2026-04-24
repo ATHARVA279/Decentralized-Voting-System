@@ -1,6 +1,4 @@
 ---
-# NGINX Ingress — single entry point for all traffic
-# Enable with: minikube addons enable ingress
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -8,25 +6,16 @@ metadata:
   namespace: voting-system
   annotations:
     nginx.ingress.kubernetes.io/rewrite-target: /
-    # Rate limiting — 20 req/s per IP globally; stricter on vote endpoint
     nginx.ingress.kubernetes.io/limit-rps: "20"
     nginx.ingress.kubernetes.io/limit-connections: "10"
-    # WebSocket support for live results
-    nginx.ingress.kubernetes.io/proxy-read-timeout:  "3600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout:  "3600"
-    nginx.ingress.kubernetes.io/proxy-http-version:  "1.1"
-    # Request body size (for manifesto uploads)
-    nginx.ingress.kubernetes.io/proxy-body-size:     "5m"
-    # CORS (handled per-service in Axum; keep consistent here)
-    nginx.ingress.kubernetes.io/enable-cors:         "true"
-    nginx.ingress.kubernetes.io/cors-allow-origin:   "*"
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
 spec:
   ingressClassName: nginx
   rules:
-    - host: voting.local    # Add "$(minikube ip) voting.local" to /etc/hosts
+    - host: voting.local
       http:
         paths:
-          # Auth service
           - path: /api/auth
             pathType: Prefix
             backend:
@@ -34,7 +23,6 @@ spec:
                 name: auth-service
                 port:
                   number: 3001
-          # Election service
           - path: /api/elections
             pathType: Prefix
             backend:
@@ -42,7 +30,6 @@ spec:
                 name: election-service
                 port:
                   number: 3002
-          # Vote service (includes WebSocket /api/votes/live/*)
           - path: /api/votes
             pathType: Prefix
             backend:
@@ -50,7 +37,6 @@ spec:
                 name: vote-service
                 port:
                   number: 3003
-          # Frontend (catch-all)
           - path: /
             pathType: Prefix
             backend:

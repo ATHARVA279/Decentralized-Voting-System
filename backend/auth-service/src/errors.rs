@@ -2,6 +2,7 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
 use serde_json::json;
+use std::env;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
@@ -17,9 +18,6 @@ pub enum AppError {
 
     #[error("Unauthorized: {0}")]
     Unauthorized(String),
-
-    #[error("Forbidden: {0}")]
-    Forbidden(String),
 
     #[error("Validation error: {0}")]
     Validation(String),
@@ -47,13 +45,39 @@ impl IntoResponse for AppError {
             AppError::UserAlreadyExists   => (StatusCode::CONFLICT,            self.to_string()),
             AppError::UserNotFound        => (StatusCode::NOT_FOUND,           self.to_string()),
             AppError::Unauthorized(_)     => (StatusCode::UNAUTHORIZED,        self.to_string()),
-            AppError::Forbidden(_)        => (StatusCode::FORBIDDEN,           self.to_string()),
             AppError::Validation(_)       => (StatusCode::UNPROCESSABLE_ENTITY, self.to_string()),
             AppError::TokenExpired        => (StatusCode::UNAUTHORIZED,        self.to_string()),
             AppError::TokenInvalid        => (StatusCode::UNAUTHORIZED,        self.to_string()),
             AppError::Database(e)         => {
                 tracing::error!("DB error: {:?}", e);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string())
+
+                if let sqlx::Error::Database(db_err) = e {
+                    let code = db_err.code().map(|c| c.to_string());
+                    let constraint = db_err.constraint();
+                    let db_message = db_err.message().to_string();
+                    let expose_details = env::var("APP_ENV").unwrap_or_else(|_| "development".into()) != "production";
+
+                    match (code.as_deref(), constraint) {
+                        (Some("23505"), Some("users_email_key")) => {
+                            (StatusCode::CONFLICT, "User already exists".to_string())
+                        }
+                        (Some("23505"), Some("users_student_id_key")) => {
+                            (StatusCode::CONFLICT, "Student ID already exists".to_string())
+                        }
+                        (Some("23505"), _) => {
+                            (StatusCode::CONFLICT, "Duplicate record".to_string())
+                        }
+                        (Some("42501"), _) => {
+                            (StatusCode::FORBIDDEN, "Database permission denied".to_string())
+                        }
+                        _ if expose_details => {
+                            (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", db_message))
+                        }
+                        _ => (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string()),
+                    }
+                } else {
+                    (StatusCode::INTERNAL_SERVER_ERROR, "Database error".to_string())
+                }
             }
             AppError::Redis(e)            => {
                 tracing::error!("Redis error: {:?}", e);

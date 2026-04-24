@@ -29,8 +29,8 @@ CREATE OR REPLACE VIEW v_election_results AS
         e.id         AS election_id,
         e.title      AS election_title,
         c.id         AS candidate_id,
-        c.name       AS candidate_name,
-        c.department AS candidate_department,
+        u.full_name  AS candidate_name,
+        u.department AS candidate_department,
         COUNT(v.id)  AS vote_count,
         ROUND(
             COUNT(v.id) * 100.0 /
@@ -38,8 +38,9 @@ CREATE OR REPLACE VIEW v_election_results AS
         2) AS vote_percentage
     FROM elections e
     JOIN candidates c ON c.election_id = e.id
+    JOIN users u ON c.user_id = u.id
     LEFT JOIN votes v ON v.candidate_id = c.id
-    GROUP BY e.id, e.title, c.id, c.name, c.department;
+    GROUP BY e.id, e.title, c.id, u.full_name, u.department;
 
 -- Summary view: total participation per election
 CREATE OR REPLACE VIEW v_election_participation AS

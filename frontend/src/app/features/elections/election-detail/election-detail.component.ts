@@ -25,17 +25,17 @@ import { AuthService }    from '../../../core/services/auth.service';
             <h1>{{ election()!.title }}</h1>
             <p class="text-muted">{{ election()!.description }}</p>
             <div class="meta-row text-sm text-muted">
-              <span>📅 {{ formatDate(election()!.start_time) }}</span>
+              <span><i class="ri-calendar-line"></i> {{ formatDate(election()!.start_time) }}</span>
               <span>→</span>
               <span>{{ formatDate(election()!.end_time) }}</span>
             </div>
           </div>
           <div class="action-btns">
             @if (election()!.status === 'active') {
-              <a [routerLink]="['/elections', election()!.id, 'vote']" class="btn btn-primary btn-lg">🗳️ Vote Now</a>
+              <a [routerLink]="['/elections', election()!.id, 'vote']" class="btn btn-primary btn-lg"><i class="ri-checkbox-circle-line"></i> Vote Now</a>
             }
-            @if (election()!.status !== 'draft') {
-              <a [routerLink]="['/elections', election()!.id, 'results']" class="btn btn-secondary">📊 Results</a>
+            @if (election()!.status === 'active' || election()!.status === 'completed') {
+              <a [routerLink]="['/elections', election()!.id, 'results']" class="btn btn-secondary"><i class="ri-bar-chart-box-line"></i> Results</a>
             }
           </div>
         </div>

@@ -1,9 +1,7 @@
-import { Component, OnInit, OnDestroy, inject, signal } from '@angular/core';
+import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule }    from '@angular/common';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { Subscription }    from 'rxjs';
-import { ElectionService, ElectionResult, Candidate } from '../../../core/services/election.service';
-import { VoteService }     from '../../../core/services/vote.service';
+import { ElectionService, ElectionResult } from '../../../core/services/election.service';
 
 @Component({
   selector: 'app-results',
@@ -31,7 +29,7 @@ import { VoteService }     from '../../../core/services/vote.service';
           @for (result of results(); track result.candidate_id; let i = $index) {
             <div class="result-row" [class.winner]="i === 0 && !isLive()">
               <div class="rank">
-                @if (i === 0 && !isLive()) { 🏆 } @else { {{ i + 1 }} }
+                @if (i === 0 && !isLive()) { <i class="ri-trophy-line"></i> } @else { {{ i + 1 }} }
               </div>
               <div class="candidate-info">
                 <div class="candidate-avatar">{{ result.candidate_name.charAt(0) }}</div>
@@ -89,10 +87,9 @@ import { VoteService }     from '../../../core/services/vote.service';
     @media(max-width:640px) { .result-row { grid-template-columns: 36px 1fr; } .progress-col, .vote-stats { display: none; } }
   `],
 })
-export class ResultsComponent implements OnInit, OnDestroy {
+export class ResultsComponent implements OnInit {
   private route   = inject(ActivatedRoute);
   private elecSvc = inject(ElectionService);
-  private voteSvc = inject(VoteService);
 
   electionId    = signal('');
   electionTitle = signal('');
@@ -100,8 +97,6 @@ export class ResultsComponent implements OnInit, OnDestroy {
   totalVotes    = signal(0);
   loading       = signal(true);
   isLive        = signal(false);
-
-  private wsSub?: Subscription;
 
   ngOnInit() {
     const id = this.route.snapshot.paramMap.get('id')!;
@@ -113,13 +108,6 @@ export class ResultsComponent implements OnInit, OnDestroy {
     });
 
     this.loadResults(id);
-
-    // Subscribe to live WebSocket updates if election is active
-    if (this.isLive()) {
-      this.wsSub = this.voteSvc.connectLive(id).subscribe({
-        next: () => this.loadResults(id),
-      });
-    }
   }
 
   loadResults(id: string) {
@@ -131,6 +119,4 @@ export class ResultsComponent implements OnInit, OnDestroy {
       },
     });
   }
-
-  ngOnDestroy() { this.wsSub?.unsubscribe(); }
 }

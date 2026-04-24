@@ -4,5 +4,4 @@ export const environment = {
   authServiceUrl:    '',
   electionServiceUrl:'',
   voteServiceUrl:    '',
-  voteServiceWs:     `wss://${window.location.host}`,
 };

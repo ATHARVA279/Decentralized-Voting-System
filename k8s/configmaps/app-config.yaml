@@ -4,21 +4,8 @@ metadata:
   name: app-config
   namespace: voting-system
 data:
-  # Port configuration
-  AUTH_PORT:     "3001"
+  AUTH_PORT: "3001"
   ELECTION_PORT: "3002"
-  VOTE_PORT:     "3003"
-
-  # Service URLs (internal cluster DNS)
-  AUTH_SERVICE_URL:     "http://auth-service:3001"
-  ELECTION_SERVICE_URL: "http://election-service:3002"
-  VOTE_SERVICE_URL:     "http://vote-service:3003"
-
-  # Redis (no auth in dev; enable AUTH in production)
+  VOTE_PORT: "3003"
   REDIS_URL: "redis://redis-service:6379"
-
-  # Logging
   RUST_LOG: "info,tower_http=debug"
-
-  # CORS origins (comma-separated)
-  ALLOWED_ORIGINS: "http://localhost,http://frontend-service"

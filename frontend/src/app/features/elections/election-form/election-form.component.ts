@@ -3,7 +3,8 @@ import { CommonModule }   from '@angular/common';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule }    from '@angular/forms';
 import { ElectionService, CreateElectionDto } from '../../../core/services/election.service';
-import { AuthService }    from '../../../core/services/auth.service';
+import { AuthService, User }    from '../../../core/services/auth.service';
+import { forkJoin } from 'rxjs';
 
 @Component({
   selector: 'app-election-form',
@@ -49,6 +50,47 @@ import { AuthService }    from '../../../core/services/auth.service';
           </div>
 
           <div class="form-section">
+            <h3>Candidates</h3>
+            <div class="form-group">
+              <label class="form-label">Search & Add Candidates *</label>
+              <input class="form-control" type="text" [(ngModel)]="searchQuery" name="searchQuery"
+                (input)="onSearch()" placeholder="Search by name or student ID..." autocomplete="off" />
+              
+              @if (searchResults.length > 0) {
+                <div class="search-results card" style="margin-top: 0.5rem; max-height: 200px; overflow-y: auto; padding: 0;">
+                  @for (user of searchResults; track user.id) {
+                    <div class="search-item candidate-search-item"
+                         (click)="selectCandidate(user)">
+                      <div class="candidate-name">{{ user.full_name }}</div>
+                      <div class="candidate-meta text-sm text-muted">{{ user.email }}</div>
+                      <div class="candidate-meta text-sm text-muted">
+                        {{ user.student_id || 'No student ID' }} • {{ user.department || 'No department' }}
+                      </div>
+                    </div>
+                  }
+                </div>
+              }
+            </div>
+
+            @if (selectedCandidates.length > 0) {
+              <div class="selected-candidates" style="display: flex; flex-direction: column; gap: 0.5rem; margin-top: 0.5rem;">
+                @for (c of selectedCandidates; track c.id) {
+                  <div class="card" style="display: flex; justify-content: space-between; align-items: center; padding: 0.75rem 1rem;">
+                    <div>
+                      <div class="candidate-name">{{ c.full_name }}</div>
+                      <div class="candidate-meta text-sm text-muted">{{ c.email }}</div>
+                      <div class="candidate-meta text-sm text-muted">
+                        {{ c.student_id || 'No student ID' }} • {{ c.department || 'No department' }}
+                      </div>
+                    </div>
+                    <button type="button" class="btn btn-ghost btn-sm" (click)="removeCandidate(c.id)" style="color: #dc2626;">Remove</button>
+                  </div>
+                }
+              </div>
+            }
+          </div>
+
+          <div class="form-section">
             <h3>Settings</h3>
             <div class="toggle-row">
               <div>
@@ -80,11 +122,15 @@ import { AuthService }    from '../../../core/services/auth.service';
     .page-wrapper { max-width: 720px; margin: 0 auto; padding: 2rem 1.5rem; }
     .page-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 2rem; flex-wrap: wrap; }
     .page-header h1 { font-size: 1.75rem; }
-    .form-card { display: flex; flex-direction: column; gap: 2rem; }
+    .form-card { display: flex; flex-direction: column; gap: 2rem; padding: 2.5rem; border-radius: var(--radius-xl); }
     .form-section { display: flex; flex-direction: column; gap: 1.1rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--clr-border); }
     .form-section:last-of-type { border-bottom: none; }
     .form-section h3 { font-size: 1rem; color: var(--clr-text-muted); text-transform: uppercase; letter-spacing: 0.05em; font-weight: 700; }
     .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    .candidate-search-item { padding: 0.75rem 1rem; border-bottom: 1px solid var(--border-soft); cursor: pointer; }
+    .candidate-search-item:hover { background: var(--bg-surface-soft); }
+    .candidate-name { font-weight: 600; color: var(--text-strong); }
+    .candidate-meta { margin-top: 0.2rem; overflow-wrap: anywhere; }
     .toggle-row { display: flex; justify-content: space-between; align-items: center; gap: 1rem; }
     .toggle { position: relative; display: inline-block; width: 44px; height: 24px; flex-shrink: 0; }
     .toggle input { opacity: 0; width: 0; height: 0; }
@@ -98,6 +144,7 @@ import { AuthService }    from '../../../core/services/auth.service';
 })
 export class ElectionFormComponent {
   private elecSvc = inject(ElectionService);
+  private authSvc = inject(AuthService);
   private router  = inject(Router);
 
   form = { title: '', description: '', start_time: '', end_time: '', is_public_results: true };
@@ -105,7 +152,45 @@ export class ElectionFormComponent {
   error   = signal('');
   success = signal('');
 
+  searchQuery = '';
+  searchResults: User[] = [];
+  selectedCandidates: User[] = [];
+  searchTimeout: any;
+
+  onSearch() {
+    clearTimeout(this.searchTimeout);
+    if (!this.searchQuery.trim()) {
+      this.searchResults = [];
+      return;
+    }
+    this.searchTimeout = setTimeout(() => {
+      this.authSvc.searchUsers(this.searchQuery).subscribe({
+        next: (users) => {
+          this.searchResults = users.filter(u => !this.selectedCandidates.some(c => c.id === u.id));
+        },
+        error: () => this.searchResults = []
+      });
+    }, 300);
+  }
+
+  selectCandidate(user: User) {
+    if (!this.selectedCandidates.some(c => c.id === user.id)) {
+      this.selectedCandidates.push(user);
+    }
+    this.searchQuery = '';
+    this.searchResults = [];
+  }
+
+  removeCandidate(id: string) {
+    this.selectedCandidates = this.selectedCandidates.filter(c => c.id !== id);
+  }
+
   onSubmit() {
+    if (this.selectedCandidates.length < 2) {
+      this.error.set('Minimum 2 candidates required to create an election.');
+      return;
+    }
+
     this.loading.set(true);
     this.error.set('');
 
@@ -119,8 +204,25 @@ export class ElectionFormComponent {
 
     this.elecSvc.create(dto).subscribe({
       next: (e) => {
-        this.success.set('Election created successfully!');
-        setTimeout(() => this.router.navigate(['/elections', e.id]), 1500);
+        const requests = this.selectedCandidates.map(c => 
+          this.elecSvc.addCandidate(e.id, { user_id: c.id })
+        );
+
+        if (requests.length > 0) {
+          forkJoin(requests).subscribe({
+            next: () => {
+              this.success.set('Election created successfully!');
+              setTimeout(() => this.router.navigate(['/elections', e.id]), 1500);
+            },
+            error: (err) => {
+              this.error.set('Election created, but failed to add some candidates.');
+              this.loading.set(false);
+            }
+          });
+        } else {
+          this.success.set('Election created successfully!');
+          setTimeout(() => this.router.navigate(['/elections', e.id]), 1500);
+        }
       },
       error: (e) => {
         this.error.set(e.error?.error ?? 'Failed to create election.');

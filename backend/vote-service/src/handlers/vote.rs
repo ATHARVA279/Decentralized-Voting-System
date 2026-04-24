@@ -1,21 +1,15 @@
-use axum::{
-    extract::{
-        ws::{Message, WebSocket, WebSocketUpgrade},
-        Extension, Path, State,
-    },
-    response::IntoResponse,
-    Json,
-};
+use axum::{extract::{Extension, Path, State}, Json};
 use chrono::Utc;
 use redis::AsyncCommands;
 use sha2::{Digest, Sha256};
+use shared::Claims;
 use std::sync::Arc;
 use uuid::Uuid;
 
 use crate::{
     db::AppState,
     errors::AppError,
-    models::vote::{AuditEntry, CastVoteRequest, Claims, LiveVoteCount, Vote},
+    models::vote::{CastVoteRequest, Vote},
 };
 
 /// POST /api/votes/cast — idempotent write with deduplication
@@ -43,13 +37,12 @@ pub async fn cast_vote(
     // 2. Verify election is active
     #[derive(sqlx::FromRow)]
     struct ElectionStatusRow {
-        id: Uuid,
         status: Option<String>,
         end_time: chrono::DateTime<chrono::Utc>,
     }
 
     let election = sqlx::query_as::<_, ElectionStatusRow>(
-        "SELECT id, status::text as status, end_time FROM elections WHERE id = $1"
+        "SELECT status::text as status, end_time FROM elections WHERE id = $1"
     )
     .bind(req.election_id)
     .fetch_optional(&state.db)
@@ -118,16 +111,6 @@ pub async fn cast_vote(
             "vote_hash":    vote_hash
         }),
     ).await?;
-
-    // 8. Broadcast live update to WebSocket subscribers
-    let live_count = get_candidate_vote_count(&state, req.election_id, req.candidate_id).await?;
-    let broadcast_msg = serde_json::to_string(&LiveVoteCount {
-        election_id:  req.election_id,
-        candidate_id: req.candidate_id,
-        vote_count:   live_count,
-        updated_at:   Utc::now(),
-    }).unwrap_or_default();
-    let _ = state.vote_broadcast.send(broadcast_msg);
 
     Ok(Json(serde_json::json!({
         "message":   "Vote cast successfully",
@@ -208,111 +191,6 @@ pub async fn audit_trail(
         .collect();
 
     Ok(Json(entries))
-}
-
-/// GET /api/votes/live/:election_id — WebSocket upgrade for live results
-pub async fn live_results_ws(
-    State(state): State<Arc<AppState>>,
-    Path(election_id): Path<Uuid>,
-    ws: WebSocketUpgrade,
-) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_ws(socket, state, election_id))
-}
-
-async fn handle_ws(mut socket: WebSocket, state: Arc<AppState>, election_id: Uuid) {
-    let mut rx = state.vote_broadcast.subscribe();
-    tracing::info!("WS client connected for election {}", election_id);
-
-    // Send initial snapshot
-    if let Ok(snapshot) = get_election_snapshot(&state, election_id).await {
-        let _ = socket.send(Message::Text(snapshot)).await;
-    }
-
-    loop {
-        tokio::select! {
-            // Forward broadcast messages relevant to this election
-            msg = rx.recv() => {
-                match msg {
-                    Ok(payload) => {
-                        // Only forward if it's for our election
-                        if payload.contains(&election_id.to_string()) {
-                            if socket.send(Message::Text(payload)).await.is_err() {
-                                break; // client disconnected
-                            }
-                        }
-                    }
-                    Err(_) => break,
-                }
-            }
-            // Handle ping from client (keep-alive)
-            msg = socket.recv() => {
-                match msg {
-                    Some(Ok(Message::Close(_))) | None => break,
-                    Some(Ok(Message::Ping(p))) => {
-                        let _ = socket.send(Message::Pong(p)).await;
-                    }
-                    _ => {}
-                }
-            }
-        }
-    }
-
-    tracing::info!("WS client disconnected for election {}", election_id);
-}
-
-// ── Helpers ────────────────────────────────────────────────────────────────────
-
-async fn get_candidate_vote_count(
-    state: &AppState,
-    election_id: Uuid,
-    candidate_id: Uuid,
-) -> Result<i64, AppError> {
-    let count = sqlx::query_scalar(
-        "SELECT COUNT(*) FROM votes WHERE election_id = $1 AND candidate_id = $2"
-    )
-    .bind(election_id)
-    .bind(candidate_id)
-    .fetch_one(&state.db)
-    .await?;
-    Ok(count)
-}
-
-async fn get_election_snapshot(
-    state: &AppState,
-    election_id: Uuid,
-) -> Result<String, AppError> {
-    #[derive(sqlx::FromRow)]
-    struct VoteResultRow {
-        candidate_id: Option<Uuid>,
-        candidate_name: Option<String>,
-        vote_count: Option<i64>,
-        vote_percentage: Option<f64>,
-    }
-
-    let rows = sqlx::query_as::<_, VoteResultRow>(
-        r#"
-        SELECT candidate_id, candidate_name, vote_count, vote_percentage::FLOAT8 as vote_percentage
-        FROM v_election_results
-        WHERE election_id = $1
-        "#
-    )
-    .bind(election_id)
-    .fetch_all(&state.db)
-    .await?;
-
-    let data: Vec<serde_json::Value> = rows.iter().map(|r| serde_json::json!({
-        "candidate_id":      r.candidate_id,
-        "candidate_name":    r.candidate_name,
-        "vote_count":        r.vote_count,
-        "vote_percentage":   r.vote_percentage
-    })).collect();
-
-    Ok(serde_json::to_string(&serde_json::json!({
-        "type":        "snapshot",
-        "election_id": election_id,
-        "results":     data,
-        "timestamp":   Utc::now()
-    })).unwrap_or_default())
 }
 
 async fn write_audit(

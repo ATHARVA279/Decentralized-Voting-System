@@ -1,7 +1,24 @@
 -- Migration: 004_create_audit_log
 -- Immutable audit log — append-only, tamper-evident transparency layer
 
-DO c:\Users\sahil\OneDrive\Desktop\Decantralised Voting System\Decentralized-Voting-System BEGIN CREATE TYPE audit_action AS ENUM ('user_registered', 'user_login', 'user_logout', 'user_login_failed', 'election_created', 'election_updated', 'election_cancelled', 'candidate_added', 'vote_cast', 'vote_attempt_duplicate', 'results_viewed', 'admin_action'); EXCEPTION WHEN duplicate_object THEN null; END c:\Users\sahil\OneDrive\Desktop\Decantralised Voting System\Decentralized-Voting-System;
+DO $$ BEGIN
+    CREATE TYPE audit_action AS ENUM (
+        'user_registered',
+        'user_login',
+        'user_logout',
+        'user_login_failed',
+        'election_created',
+        'election_updated',
+        'election_cancelled',
+        'candidate_added',
+        'vote_cast',
+        'vote_attempt_duplicate',
+        'results_viewed',
+        'admin_action'
+    );
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 CREATE TABLE IF NOT EXISTS audit_log (
     id            BIGSERIAL       PRIMARY KEY,  -- Sequential for ordering proof
@@ -60,5 +77,4 @@ CREATE OR REPLACE VIEW v_audit_trail AS
 COMMENT ON TABLE audit_log IS 'Immutable, append-only audit trail. Triggers prevent UPDATE/DELETE. Chain hashes provide tamper detection.';
 COMMENT ON COLUMN audit_log.row_hash IS 'SHA-256 of (prev_row_hash || action || actor_id || resource_id || logged_at) — forms a hash chain';
 COMMENT ON COLUMN audit_log.id IS 'BIGSERIAL (sequential) allows ordering verification without timestamps alone';
-
 

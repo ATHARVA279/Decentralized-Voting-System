@@ -10,15 +10,11 @@ import { AuthService }   from '../../../core/services/auth.service';
   imports: [CommonModule, FormsModule, RouterLink],
   template: `
     <div class="auth-page">
-      <!-- Glow orbs -->
-      <div class="orb orb-1"></div>
-      <div class="orb orb-2"></div>
-
-      <div class="auth-card fade-in">
-        <div class="auth-header">
-          <div class="logo">🗳️</div>
+      <section class="auth-card card fade-in">
+        <div class="auth-copy">
+          <div class="eyebrow">Secure campus voting</div>
           <h1>Welcome back</h1>
-          <p class="text-muted">Sign in to VoteChain</p>
+          <p class="text-muted">Sign in to review elections, manage ballots, and track live results in one clean workspace.</p>
         </div>
 
         <form (ngSubmit)="onLogin()" #loginForm="ngForm">
@@ -43,13 +39,13 @@ import { AuthService }   from '../../../core/services/auth.service';
                 placeholder="••••••••"
                 required autocomplete="current-password" />
               <button type="button" class="toggle-pw" (click)="showPassword.set(!showPassword())">
-                {{ showPassword() ? '🙈' : '👁️' }}
+                <i [class]="showPassword() ? 'ri-eye-off-line' : 'ri-eye-line'"></i>
               </button>
             </div>
           </div>
 
           @if (error()) {
-            <div class="alert alert-error">⚠️ {{ error() }}</div>
+            <div class="alert alert-error"><i class="ri-error-warning-line"></i> {{ error() }}</div>
           }
 
           <button type="submit" class="btn btn-primary w-full btn-lg" [disabled]="loading()">
@@ -58,55 +54,78 @@ import { AuthService }   from '../../../core/services/auth.service';
           </button>
         </form>
 
-        <p class="auth-footer text-center text-muted text-sm">
+        <p class="auth-footer text-center text-sm">
           Don't have an account?
-          <a routerLink="/auth/register">Create one →</a>
+          <a routerLink="/auth/register">Create one</a>
         </p>
-      </div>
+      </section>
     </div>
   `,
   styles: [`
     .auth-page {
-      min-height: 100vh; display: flex; align-items: center; justify-content: center;
-      padding: 2rem; position: relative; overflow: hidden;
+      min-height: calc(100vh - 5rem);
+      display: grid;
+      place-items: center;
+      padding: 2rem 1rem 3rem;
     }
-    .orb {
-      position: fixed; border-radius: 50%; filter: blur(80px); pointer-events: none;
-      animation: float 8s ease-in-out infinite;
-    }
-    .orb-1 {
-      width: 400px; height: 400px; top: -100px; left: -100px;
-      background: radial-gradient(circle, rgba(108,99,255,0.25), transparent 70%);
-    }
-    .orb-2 {
-      width: 350px; height: 350px; bottom: -100px; right: -50px;
-      background: radial-gradient(circle, rgba(0,212,184,0.2), transparent 70%);
-      animation-delay: -4s;
-    }
-    @keyframes float {
-      0%, 100% { transform: translateY(0) scale(1); }
-      50%       { transform: translateY(-20px) scale(1.05); }
-    }
+
     .auth-card {
-      width: 100%; max-width: 420px; z-index: 1;
-      background: rgba(20,23,40,0.85);
-      backdrop-filter: blur(20px);
-      border: 1px solid rgba(255,255,255,0.1);
-      border-radius: 20px; padding: 2.5rem;
-      box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(108,99,255,0.1);
+      width: min(100%, 480px);
+      padding: 2rem;
+      background: linear-gradient(180deg, rgba(18, 30, 38, 0.95) 0%, rgba(11, 21, 29, 0.98) 100%);
     }
-    .auth-header { text-align: center; margin-bottom: 2rem; }
-    .logo { font-size: 3rem; margin-bottom: 1rem; display: block; }
-    .auth-header h1 { font-size: 1.75rem; margin-bottom: 0.4rem; }
-    form { display: flex; flex-direction: column; gap: 1.25rem; }
-    .input-suffix { position: relative; }
-    .input-suffix .form-control { padding-right: 3rem; }
+
+    .auth-copy {
+      margin-bottom: 1.75rem;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      padding: 0.35rem 0.7rem;
+      margin-bottom: 1rem;
+      background: var(--bg-accent-soft);
+      color: #82e8f3;
+      border-radius: 999px;
+      font-size: 0.78rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+
+    form {
+      display: flex;
+      flex-direction: column;
+      gap: 1.1rem;
+    }
+
+    .input-suffix {
+      position: relative;
+    }
+
+    .input-suffix .form-control {
+      padding-right: 3rem;
+    }
+
     .toggle-pw {
-      position: absolute; right: 0.75rem; top: 50%; transform: translateY(-50%);
-      background: none; border: none; cursor: pointer; font-size: 1rem; opacity: 0.7;
+      position: absolute;
+      right: 0.8rem;
+      top: 50%;
+      transform: translateY(-50%);
+      border: 0;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
     }
-    .auth-footer { margin-top: 1.5rem; }
-    .auth-footer a { color: var(--clr-primary); font-weight: 600; }
+
+    .auth-footer {
+      margin-top: 1.25rem;
+      color: var(--text-muted);
+    }
+
+    .auth-footer a {
+      color: #82e8f3;
+      font-weight: 600;
+    }
   `],
 })
 export class LoginComponent {

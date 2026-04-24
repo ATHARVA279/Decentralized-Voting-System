@@ -54,26 +54,10 @@ if (-not (Test-Path ".env")) {
 }
 
 # 3. Start infrastructure
-Write-Host "`n[3/5] Starting PostgreSQL and Redis..." -ForegroundColor Yellow
+Write-Host "`n[3/5] Starting Redis..." -ForegroundColor Yellow
 
-docker-compose up -d postgres redis
-
-Write-Host "Waiting for PostgreSQL to be ready..." -ForegroundColor Cyan
-$ready = $false
-for ($i = 0; $i -lt 30; $i++) {
-    $result = docker-compose exec -T postgres pg_isready -U postgres 2>$null
-    if ($LASTEXITCODE -eq 0) {
-        $ready = $true
-        break
-    }
-    Start-Sleep -Seconds 2
-}
-
-if ($ready) {
-    Write-Host "OK PostgreSQL ready" -ForegroundColor Green
-} else {
-    Write-Host "WARN PostgreSQL may not be fully ready, continuing anyway." -ForegroundColor Yellow
-}
+docker-compose up -d redis
+Write-Host "OK Redis ready" -ForegroundColor Green
 
 # 4. Install frontend dependencies
 Write-Host "`n[4/5] Installing Angular dependencies..." -ForegroundColor Yellow
@@ -91,8 +75,9 @@ Write-Host ""
 Write-Host "  To start the full stack, run:"
 Write-Host "    docker-compose up -d"
 Write-Host ""
-Write-Host "  Then seed the database:"
-Write-Host "    docker-compose exec -T postgres psql -U postgres -d voting_db < database/seeds/001_seed_data.sql"
+Write-Host "  The app services will use DATABASE_URL from .env."
+Write-Host "  Use your Supabase Postgres URL there before starting the backend."
 Write-Host ""
-Write-Host "  Open http://localhost to view the app."
+Write-Host "  Local Postgres is optional and available with:"
+Write-Host "    docker-compose --profile local-db up -d postgres"
 Write-Host ""

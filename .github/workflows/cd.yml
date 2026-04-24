@@ -22,16 +22,20 @@ jobs:
       matrix:
         include:
           - service: auth-service
-            context: ./backend/auth-service
+            context: ./backend
+            dockerfile: ./auth-service/Dockerfile
             image:   auth-service
           - service: election-service
-            context: ./backend/election-service
+            context: ./backend
+            dockerfile: ./election-service/Dockerfile
             image:   election-service
           - service: vote-service
-            context: ./backend/vote-service
+            context: ./backend
+            dockerfile: ./vote-service/Dockerfile
             image:   vote-service
           - service: frontend
             context: ./frontend
+            dockerfile: ./Dockerfile
             image:   frontend
 
     steps:
@@ -62,6 +66,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context:    ${{ matrix.context }}
+          file:       ${{ matrix.dockerfile }}
           push:       true
           tags:       ${{ steps.meta.outputs.tags }}
           labels:     ${{ steps.meta.outputs.labels }}
