@@ -1,5 +1,5 @@
 use axum::{
-    routing::{delete, get},
+    routing::{delete, get, patch, post},
     Router,
 };
 use sqlx::postgres::PgPoolOptions;
@@ -29,6 +29,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let redis_url    = std::env::var("REDIS_URL").expect("REDIS_URL must be set");
     let jwt_secret   = std::env::var("JWT_SECRET").expect("JWT_SECRET must be set");
     let port         = std::env::var("PORT").unwrap_or_else(|_| "3002".into());
 
@@ -39,7 +40,10 @@ async fn main() -> anyhow::Result<()> {
         .connect(&database_url)
         .await?;
 
-    let state = Arc::new(AppState { db: db_pool, jwt_secret });
+    let redis_client  = redis::Client::open(redis_url)?;
+    let redis_manager = redis::aio::ConnectionManager::new(redis_client).await?;
+
+    let state = Arc::new(AppState { db: db_pool, redis: redis_manager, jwt_secret });
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -73,11 +77,16 @@ fn election_routes() -> Router<Arc<AppState>> {
         // Election CRUD - support both trailing and non-trailing slashes
         .route("/api/elections",             get(handlers::election::list_elections).post(handlers::election::create_election))
         .route("/api/elections/",            get(handlers::election::list_elections).post(handlers::election::create_election))
+        .route("/api/elections/with-candidates", post(handlers::election::create_election_with_candidates))
         .route("/api/elections/:id",         get(handlers::election::get_election).put(handlers::election::update_election).delete(handlers::election::delete_election))
+        .route("/api/elections/:id/publish-results", post(handlers::election::publish_results))
         // Candidates management
         .route("/api/elections/:id/candidates",      get(handlers::election::list_candidates).post(handlers::election::add_candidate))
         .route("/api/elections/:id/candidates/:cid", delete(handlers::election::remove_candidate))
         // Results
         .route("/api/elections/:id/results",         get(handlers::election::get_results))
         .route("/api/elections/:id/participation",   get(handlers::election::get_participation))
+        // Admin controls
+        .route("/api/admin/elections/:id/status", patch(handlers::election::admin_update_election_status))
+        .route("/api/admin/elections/purge", delete(handlers::election::admin_purge_elections))
 }

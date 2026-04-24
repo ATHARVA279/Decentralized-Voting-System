@@ -112,6 +112,16 @@ async fn main() -> anyhow::Result<()> {
                     mw::require_auth,
                 )),
         )
+        .nest(
+            "/api/admin",
+            Router::new()
+                .route("/users", get(handlers::auth::admin_list_users))
+                .route("/users/:id/status", axum::routing::patch(handlers::auth::admin_update_user_status))
+                .route_layer(axum::middleware::from_fn_with_state(
+                    state.clone(),
+                    mw::require_auth,
+                )),
+        )
         .with_state(state)
         .layer(cors)
         .layer(TraceLayer::new_for_http())

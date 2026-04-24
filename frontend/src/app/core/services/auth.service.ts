@@ -11,8 +11,21 @@ export interface User {
   full_name:  string;
   student_id: string | null;
   department: string | null;
-  role:       'student' | 'admin' | 'observer';
+  role:       'voter' | 'admin';
   created_at: string;
+}
+
+export interface AdminUser extends User {
+  is_active: boolean;
+  email_verified: boolean;
+  updated_at: string;
+}
+
+export interface AdminUserListResponse {
+  data: AdminUser[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface AuthResponse {
@@ -26,6 +39,7 @@ export interface AuthResponse {
 @Injectable({ providedIn: 'root' })
 export class AuthService {
   private readonly API = `${environment.authServiceUrl}/api/auth`;
+  private readonly ADMIN_API = `${environment.authServiceUrl}/api/admin`;
 
   // Reactive signals — components subscribe without boilerplate
   private _user    = signal<User | null>(this.loadUser());
@@ -86,6 +100,27 @@ export class AuthService {
 
   searchUsers(query: string) {
     return this.http.get<User[]>(`${environment.authServiceUrl}/api/users/search`, { params: { q: query } });
+  }
+
+  adminListUsers(params: {
+    q?: string;
+    role?: 'admin' | 'voter';
+    is_active?: boolean;
+    limit?: number;
+    offset?: number;
+  }) {
+    const query: Record<string, string> = {};
+    if (params.q?.trim()) query['q'] = params.q.trim();
+    if (params.role) query['role'] = params.role;
+    if (params.is_active !== undefined) query['is_active'] = String(params.is_active);
+    if (params.limit !== undefined) query['limit'] = String(params.limit);
+    if (params.offset !== undefined) query['offset'] = String(params.offset);
+
+    return this.http.get<AdminUserListResponse>(`${this.ADMIN_API}/users`, { params: query });
+  }
+
+  adminUpdateUserStatus(userId: string, is_active: boolean) {
+    return this.http.patch<AdminUser>(`${this.ADMIN_API}/users/${userId}/status`, { is_active });
   }
 
   private saveSession(res: AuthResponse) {

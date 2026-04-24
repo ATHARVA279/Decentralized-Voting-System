@@ -2,10 +2,12 @@ use argon2::{
     password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
 };
-use axum::{extract::State, Json};
+use axum::{extract::{Path, Query, State}, Extension, Json};
 use chrono::Utc;
 use jsonwebtoken::{encode, EncodingKey, Header};
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use sqlx::{Postgres, QueryBuilder};
 use std::sync::Arc;
 use uuid::Uuid;
 use validator::Validate;
@@ -46,6 +48,7 @@ pub async fn register(
     let existing = sqlx::query_scalar::<_, i64>(
         "SELECT COUNT(*) FROM users WHERE email = $1"
     )
+    .persistent(false)
     .bind(&req.email)
     .fetch_one(&state.db)
     .await?;
@@ -66,10 +69,11 @@ pub async fn register(
     let user = sqlx::query_as::<_, User>(
         r#"
         INSERT INTO users (email, password_hash, full_name, student_id, department, role)
-        VALUES ($1, $2, $3, $4, $5, 'student')
+        VALUES ($1, $2, $3, $4, $5, 'voter')
         RETURNING *
         "#,
     )
+    .persistent(false)
     .bind(&req.email)
     .bind(&pw_hash)
     .bind(&req.full_name)
@@ -89,7 +93,7 @@ pub async fn register(
     )
     .await?;
 
-    let token_response = generate_tokens(&user, &state.jwt_secret, &state.redis).await?;
+    let token_response = generate_tokens(&state, &user).await?;
     Ok(Json(token_response))
 }
 
@@ -103,6 +107,7 @@ pub async fn login(
     let user = sqlx::query_as::<_, User>(
         "SELECT * FROM users WHERE email = $1 AND is_active = TRUE"
     )
+    .persistent(false)
     .bind(&req.email)
     .fetch_optional(&state.db)
     .await?
@@ -127,7 +132,7 @@ pub async fn login(
     )
     .await?;
 
-    let token_response = generate_tokens(&user, &state.jwt_secret, &state.redis).await?;
+    let token_response = generate_tokens(&state, &user).await?;
     Ok(Json(token_response))
 }
 
@@ -157,7 +162,8 @@ pub async fn refresh_token(
         WHERE rt.token_hash = $1
         "#
     )
-    .bind(token_hash)
+    .persistent(false)
+    .bind(&token_hash)
     .fetch_optional(&state.db)
     .await?
     .ok_or(AppError::TokenInvalid)?;
@@ -169,9 +175,23 @@ pub async fn refresh_token(
         return Err(AppError::TokenExpired);
     }
 
+    let mut tx = state.db.begin().await?;
+
+    sqlx::query(
+        r#"
+        UPDATE refresh_tokens
+        SET revoked = TRUE
+        WHERE token_hash = $1
+        "#,
+    )
+    .bind(token_hash.as_str())
+    .execute(&mut *tx)
+    .await?;
+
     let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
+        .persistent(false)
         .bind(row.user_id)
-        .fetch_one(&state.db)
+        .fetch_one(&mut *tx)
         .await?;
 
     let now    = Utc::now().timestamp();
@@ -192,10 +212,29 @@ pub async fn refresh_token(
     )
     .map_err(|e| AppError::Internal(anyhow::anyhow!("JWT encode error: {}", e)))?;
 
+    let new_refresh_token = Uuid::new_v4().to_string() + &Uuid::new_v4().to_string();
+    let new_token_hash = hex::encode(Sha256::digest(new_refresh_token.as_bytes()));
+    let new_expires_at = Utc::now() + chrono::Duration::seconds(REFRESH_TOKEN_TTL);
+
+    sqlx::query(
+        r#"
+        INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+        VALUES ($1, $2, $3)
+        "#,
+    )
+    .bind(user.id)
+    .bind(new_token_hash)
+    .bind(new_expires_at)
+    .execute(&mut *tx)
+    .await?;
+
+    tx.commit().await?;
+
     Ok(Json(serde_json::json!({
         "access_token": access_token,
         "token_type":   "Bearer",
-        "expires_in":   ACCESS_TOKEN_TTL
+        "expires_in":   ACCESS_TOKEN_TTL,
+        "refresh_token": new_refresh_token
     })))
 }
 
@@ -208,6 +247,7 @@ pub async fn get_me(
         .map_err(|_| AppError::TokenInvalid)?;
 
     let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
+        .persistent(false)
         .bind(user_id)
         .fetch_optional(&state.db)
         .await?
@@ -243,9 +283,8 @@ pub async fn logout(
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 async fn generate_tokens(
+    state:      &AppState,
     user:       &User,
-    jwt_secret: &str,
-    _redis:     &redis::aio::ConnectionManager,
 ) -> Result<TokenResponse, AppError> {
     let now = Utc::now().timestamp();
     let jti = Uuid::new_v4().to_string();
@@ -262,17 +301,25 @@ async fn generate_tokens(
     let access_token = encode(
         &Header::default(),
         &access_claims,
-        &EncodingKey::from_secret(jwt_secret.as_bytes()),
+        &EncodingKey::from_secret(state.jwt_secret.as_bytes()),
     )
     .map_err(|e| AppError::Internal(anyhow::anyhow!("JWT encode: {}", e)))?;
 
-    // Generate opaque refresh token
     let refresh_token = Uuid::new_v4().to_string() + &Uuid::new_v4().to_string();
-    let _token_hash   = hex::encode(Sha256::digest(refresh_token.as_bytes()));
-    let _expires_at   = Utc::now() + chrono::Duration::seconds(REFRESH_TOKEN_TTL);
+    let token_hash    = hex::encode(Sha256::digest(refresh_token.as_bytes()));
+    let expires_at    = Utc::now() + chrono::Duration::seconds(REFRESH_TOKEN_TTL);
 
-    // Store refresh token in DB (hashed)
-    // (In production this would be its own DB table; simplified here)
+    sqlx::query(
+        r#"
+        INSERT INTO refresh_tokens (user_id, token_hash, expires_at)
+        VALUES ($1, $2, $3)
+        "#,
+    )
+    .bind(user.id)
+    .bind(token_hash)
+    .bind(expires_at)
+    .execute(&state.db)
+    .await?;
 
     Ok(TokenResponse {
         access_token,
@@ -322,8 +369,12 @@ async fn write_audit_log(
     Ok(())
 }
 
-use axum::extract::Query;
-use serde::{Deserialize, Serialize};
+fn ensure_admin(claims: &Claims) -> Result<(), AppError> {
+    if claims.role != "admin" {
+        return Err(AppError::Unauthorized("Admin access required".into()));
+    }
+    Ok(())
+}
 
 #[derive(Deserialize)]
 pub struct SearchQuery {
@@ -342,8 +393,11 @@ pub struct UserSearchResponse {
 /// GET /api/users/search?q=...
 pub async fn search_users(
     State(state): State<Arc<AppState>>,
+    Extension(claims): Extension<Claims>,
     Query(params): Query<SearchQuery>,
 ) -> Result<Json<Vec<UserSearchResponse>>, AppError> {
+    ensure_admin(&claims)?;
+
     let search_term = format!("%{}%", params.q);
 
     let users = sqlx::query_as::<_, UserSearchResponse>(
@@ -359,4 +413,206 @@ pub async fn search_users(
     .await?;
 
     Ok(Json(users))
+}
+
+#[derive(Deserialize)]
+pub struct AdminListUsersQuery {
+    pub q: Option<String>,
+    pub role: Option<String>,
+    pub is_active: Option<bool>,
+    pub limit: Option<i64>,
+    pub offset: Option<i64>,
+}
+
+#[derive(Serialize, sqlx::FromRow)]
+pub struct AdminUserResponse {
+    pub id: Uuid,
+    pub email: String,
+    pub full_name: String,
+    pub student_id: Option<String>,
+    pub department: Option<String>,
+    pub role: String,
+    pub is_active: bool,
+    pub email_verified: bool,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub updated_at: chrono::DateTime<chrono::Utc>,
+}
+
+#[derive(Deserialize)]
+pub struct UpdateUserStatusRequest {
+    pub is_active: bool,
+}
+
+/// GET /api/admin/users
+pub async fn admin_list_users(
+    State(state): State<Arc<AppState>>,
+    Extension(claims): Extension<Claims>,
+    Query(params): Query<AdminListUsersQuery>,
+) -> Result<Json<serde_json::Value>, AppError> {
+    ensure_admin(&claims)?;
+
+    let limit = params.limit.unwrap_or(20).clamp(1, 100);
+    let offset = params.offset.unwrap_or(0).max(0);
+
+    let role_filter = match params.role.as_deref() {
+        Some("admin") => Some("admin"),
+        Some("voter") => Some("voter"),
+        Some(_) => return Err(AppError::Validation("role must be either 'admin' or 'voter'".into())),
+        None => None,
+    };
+
+    let search_term = params
+        .q
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| format!("%{}%", s));
+
+    let mut list_query = QueryBuilder::<Postgres>::new(
+        "SELECT id, email, full_name, student_id, department, role::text as role, is_active, email_verified, created_at, updated_at FROM users",
+    );
+
+    let mut count_query = QueryBuilder::<Postgres>::new("SELECT COUNT(*) FROM users");
+
+    let mut list_has_where = false;
+    if let Some(search) = &search_term {
+        let s = search.as_str();
+        if !list_has_where {
+            list_query.push(" WHERE ");
+            list_has_where = true;
+        } else {
+            list_query.push(" AND ");
+        }
+        list_query
+            .push("(full_name ILIKE ")
+            .push_bind(s)
+            .push(" OR email ILIKE ")
+            .push_bind(s)
+            .push(" OR COALESCE(student_id, '') ILIKE ")
+            .push_bind(s)
+            .push(")");
+    }
+
+    if let Some(role) = role_filter {
+        if !list_has_where {
+            list_query.push(" WHERE ");
+            list_has_where = true;
+        } else {
+            list_query.push(" AND ");
+        }
+        list_query.push("role::text = ").push_bind(role);
+    }
+
+    if let Some(active) = params.is_active {
+        if !list_has_where {
+            list_query.push(" WHERE ");
+            list_has_where = true;
+        } else {
+            list_query.push(" AND ");
+        }
+        list_query.push("is_active = ").push_bind(active);
+    }
+
+    let mut count_has_where = false;
+    if let Some(search) = &search_term {
+        let s = search.as_str();
+        if !count_has_where {
+            count_query.push(" WHERE ");
+            count_has_where = true;
+        } else {
+            count_query.push(" AND ");
+        }
+        count_query
+            .push("(full_name ILIKE ")
+            .push_bind(s)
+            .push(" OR email ILIKE ")
+            .push_bind(s)
+            .push(" OR COALESCE(student_id, '') ILIKE ")
+            .push_bind(s)
+            .push(")");
+    }
+
+    if let Some(role) = role_filter {
+        if !count_has_where {
+            count_query.push(" WHERE ");
+            count_has_where = true;
+        } else {
+            count_query.push(" AND ");
+        }
+        count_query.push("role::text = ").push_bind(role);
+    }
+
+    if let Some(active) = params.is_active {
+        if !count_has_where {
+            count_query.push(" WHERE ");
+            count_has_where = true;
+        } else {
+            count_query.push(" AND ");
+        }
+        count_query.push("is_active = ").push_bind(active);
+    }
+
+    list_query
+        .push(" ORDER BY created_at DESC LIMIT ")
+        .push_bind(limit)
+        .push(" OFFSET ")
+        .push_bind(offset);
+
+    let users = list_query
+        .build_query_as::<AdminUserResponse>()
+        .fetch_all(&state.db)
+        .await?;
+
+    let total = count_query
+        .build_query_scalar::<i64>()
+        .fetch_one(&state.db)
+        .await?;
+
+    Ok(Json(serde_json::json!({
+        "data": users,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    })))
+}
+
+/// PATCH /api/admin/users/:id/status
+pub async fn admin_update_user_status(
+    State(state): State<Arc<AppState>>,
+    Extension(claims): Extension<Claims>,
+    Path(user_id): Path<Uuid>,
+    Json(req): Json<UpdateUserStatusRequest>,
+) -> Result<Json<AdminUserResponse>, AppError> {
+    ensure_admin(&claims)?;
+
+    let actor_id = Uuid::parse_str(&claims.sub).map_err(|_| AppError::TokenInvalid)?;
+    if actor_id == user_id && !req.is_active {
+        return Err(AppError::Validation("You cannot deactivate your own admin account".into()));
+    }
+
+    let updated = sqlx::query_as::<_, AdminUserResponse>(
+        r#"
+        UPDATE users
+        SET is_active = $1
+        WHERE id = $2
+        RETURNING id, email, full_name, student_id, department, role::text as role, is_active, email_verified, created_at, updated_at
+        "#,
+    )
+    .bind(req.is_active)
+    .bind(user_id)
+    .fetch_optional(&state.db)
+    .await?
+    .ok_or(AppError::UserNotFound)?;
+
+    write_audit_log(
+        &state,
+        "admin_action",
+        Some(actor_id),
+        "user",
+        Some(user_id),
+        serde_json::json!({ "is_active": req.is_active }),
+    )
+    .await?;
+
+    Ok(Json(updated))
 }

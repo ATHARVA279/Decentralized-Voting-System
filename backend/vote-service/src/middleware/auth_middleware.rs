@@ -21,6 +21,19 @@ pub async fn require_auth(
         _ => AppError::TokenInvalid,
     })?;
 
+    let blacklist_key = format!("blacklist:jti:{}", claims.jti);
+    let mut con = state.redis.clone();
+    let is_blacklisted: bool = redis::cmd("EXISTS")
+        .arg(&blacklist_key)
+        .query_async::<_, i64>(&mut con)
+        .await
+        .map(|v| v > 0)
+        .unwrap_or(false);
+
+    if is_blacklisted {
+        return Err(AppError::Unauthorized("Token has been revoked".into()));
+    }
+
     req.extensions_mut().insert(claims);
     Ok(next.run(req).await)
 }

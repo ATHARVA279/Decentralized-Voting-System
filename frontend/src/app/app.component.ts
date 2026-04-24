@@ -1,5 +1,5 @@
-import { Component } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { Component, inject } from '@angular/core';
+import { Router, RouterOutlet } from '@angular/router';
 import { NavbarComponent } from './shared/navbar/navbar.component';
 
 @Component({
@@ -7,7 +7,9 @@ import { NavbarComponent } from './shared/navbar/navbar.component';
   standalone: true,
   imports: [RouterOutlet, NavbarComponent],
   template: `
-    <app-navbar />
+    @if (showNavbar()) {
+      <app-navbar />
+    }
     <main class="app-main">
       <router-outlet />
     </main>
@@ -18,4 +20,10 @@ import { NavbarComponent } from './shared/navbar/navbar.component';
     }
   `],
 })
-export class AppComponent {}
+export class AppComponent {
+  private router = inject(Router);
+
+  showNavbar(): boolean {
+    return !this.router.url.startsWith('/auth');
+  }
+}

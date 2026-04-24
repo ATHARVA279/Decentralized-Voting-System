@@ -65,6 +65,23 @@ export const routes: Routes = [
     ],
   },
   {
+    path: 'admin',
+    canActivate: [authGuard, adminGuard],
+    children: [
+      {
+        path: 'users',
+        loadComponent: () =>
+          import('./features/admin/users/admin-users.component').then(m => m.AdminUsersComponent),
+      },
+      {
+        path: 'elections',
+        loadComponent: () =>
+          import('./features/admin/elections/admin-elections.component').then(m => m.AdminElectionsComponent),
+      },
+      { path: '', redirectTo: 'users', pathMatch: 'full' },
+    ],
+  },
+  {
     path: '**',
     loadComponent: () =>
       import('./features/not-found/not-found.component').then(m => m.NotFoundComponent),

@@ -23,6 +23,10 @@ import { AuthService }   from '../../core/services/auth.service';
             <div class="nav-links">
               <a routerLink="/dashboard" routerLinkActive="active" class="nav-link">Dashboard</a>
               <a routerLink="/elections" routerLinkActive="active" class="nav-link">Elections</a>
+              @if (auth.isAdmin()) {
+                <a routerLink="/admin/users" routerLinkActive="active" class="nav-link">Users</a>
+                <a routerLink="/admin/elections" routerLinkActive="active" class="nav-link">Admin Elections</a>
+              }
             </div>
 
             <div class="nav-user">

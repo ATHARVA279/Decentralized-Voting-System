@@ -9,12 +9,15 @@ export interface Election {
   description:      string | null;
   start_time:       string;
   end_time:         string;
-  status:           'upcoming' | 'active' | 'completed' | 'cancelled';
+  status:           'draft' | 'upcoming' | 'active' | 'completed' | 'cancelled';
   created_by:       string;
   is_public_results:  boolean;
+  results_published: boolean;
   created_at:       string;
   updated_at:       string;
 }
+
+export type ElectionStatus = Election['status'];
 
 export interface Candidate {
   id:          string;
@@ -49,6 +52,7 @@ export interface CreateElectionDto {
 @Injectable({ providedIn: 'root' })
 export class ElectionService {
   private readonly API = `${environment.electionServiceUrl}/api/elections`;
+  private readonly ADMIN_API = `${environment.electionServiceUrl}/api/admin/elections`;
 
   constructor(private http: HttpClient) {}
 
@@ -86,7 +90,31 @@ export class ElectionService {
     return this.http.get<ElectionResult[]>(`${this.API}/${electionId}/results`);
   }
 
+  publishResults(electionId: string): Observable<Election> {
+    return this.http.post<Election>(`${this.API}/${electionId}/publish-results`, {});
+  }
+
   getParticipation(electionId: string): Observable<{ total_votes_cast: number }> {
     return this.http.get<{ total_votes_cast: number }>(`${this.API}/${electionId}/participation`);
+  }
+
+  adminUpdateStatus(electionId: string, status: ElectionStatus): Observable<Election> {
+    return this.http.patch<Election>(`${this.ADMIN_API}/${electionId}/status`, { status });
+  }
+
+  adminPurge(confirm: string, include_completed = false): Observable<{
+    message: string;
+    include_completed: boolean;
+    deleted_votes: number;
+    deleted_elections: number;
+  }> {
+    return this.http.delete<{
+      message: string;
+      include_completed: boolean;
+      deleted_votes: number;
+      deleted_elections: number;
+    }>(`${this.ADMIN_API}/purge`, {
+      body: { confirm, include_completed },
+    });
   }
 }

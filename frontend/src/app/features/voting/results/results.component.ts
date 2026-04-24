@@ -10,7 +10,7 @@ import { ElectionService, ElectionResult } from '../../../core/services/election
   template: `
     <div class="page-wrapper container fade-in">
       <div class="page-header">
-        <a [routerLink]="['/elections', electionId()]" class="btn btn-ghost btn-sm">← Back</a>
+        <a routerLink="/dashboard" class="btn btn-ghost btn-sm">← Back</a>
         <div class="live-indicator" [class.is-live]="isLive()">
           <span class="dot"></span>
           {{ isLive() ? 'Live Results' : 'Final Results' }}
@@ -24,6 +24,8 @@ import { ElectionService, ElectionResult } from '../../../core/services/election
         <div class="loading-state">
           <div class="spinner" style="width:40px;height:40px;border-width:3px;"></div>
         </div>
+      } @else if (error()) {
+        <div class="alert alert-error">{{ error() }}</div>
       } @else {
         <div class="results-list">
           @for (result of results(); track result.candidate_id; let i = $index) {
@@ -97,6 +99,7 @@ export class ResultsComponent implements OnInit {
   totalVotes    = signal(0);
   loading       = signal(true);
   isLive        = signal(false);
+  error         = signal('');
 
   ngOnInit() {
     const id = this.route.snapshot.paramMap.get('id')!;
@@ -104,7 +107,7 @@ export class ResultsComponent implements OnInit {
 
     this.elecSvc.get(id).subscribe(e => {
       this.electionTitle.set(e.title);
-      this.isLive.set(e.status === 'active');
+      this.isLive.set(e.status === 'active' && e.is_public_results);
     });
 
     this.loadResults(id);
@@ -115,6 +118,10 @@ export class ResultsComponent implements OnInit {
       next: res => {
         this.results.set(res.sort((a, b) => b.vote_count - a.vote_count));
         this.totalVotes.set(res.reduce((sum, r) => sum + r.vote_count, 0));
+        this.loading.set(false);
+      },
+      error: (e) => {
+        this.error.set(e.error?.error ?? 'Results are not available yet.');
         this.loading.set(false);
       },
     });

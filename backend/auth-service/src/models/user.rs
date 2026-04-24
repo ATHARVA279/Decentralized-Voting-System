@@ -8,9 +8,8 @@ use validator::Validate;
 #[sqlx(type_name = "user_role", rename_all = "lowercase")]
 #[serde(rename_all = "lowercase")]
 pub enum UserRole {
-    Student,
+    Voter,
     Admin,
-    Observer,
 }
 
 #[derive(Debug, Clone, Serialize, FromRow)]

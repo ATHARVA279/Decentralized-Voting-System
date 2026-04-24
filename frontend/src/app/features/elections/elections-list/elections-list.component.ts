@@ -66,7 +66,7 @@ import { AuthService }  from '../../../core/services/auth.service';
                 <div class="card-footer">
                   <a [routerLink]="['/elections', e.id]" class="btn btn-ghost btn-sm">Details</a>
                   <div class="footer-actions">
-                    @if (e.status === 'completed' || e.status === 'active') {
+                    @if (canViewResults(e)) {
                       <a [routerLink]="['/elections', e.id, 'results']" class="btn btn-secondary btn-sm">Results</a>
                     }
                     @if (e.status === 'active') {
@@ -238,6 +238,12 @@ export class ElectionsListComponent implements OnInit {
   }
 
   setTab(val: string) { this.activeTab.set(val); }
+
+  canViewResults(e: Election) {
+    if (e.status === 'active') return e.is_public_results;
+    if (e.status === 'completed') return e.is_public_results || e.results_published;
+    return false;
+  }
 
   formatDate = (d: string) => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
