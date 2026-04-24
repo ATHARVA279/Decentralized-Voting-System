@@ -78,10 +78,12 @@ import { ElectionService, Election } from '../../core/services/election.service'
                     <span class="time-left text-xs text-muted">{{ formatTimeLeft(election.end_time) }}</span>
                   </div>
                   <h3>{{ election.title }}</h3>
-                  <p class="text-muted text-sm">{{ election.description ?? 'Cast your vote before the election closes.' }}</p>
+                  <p class="text-muted text-sm">{{ truncateWords(election.description, 18) }}</p>
                   <div class="card-actions">
                     <a [routerLink]="['/elections', election.id, 'vote']" class="btn btn-primary btn-sm">Cast vote</a>
-                    <a [routerLink]="['/elections', election.id, 'results']" class="btn btn-ghost btn-sm">Live results</a>
+                    @if (election.is_public_results) {
+                      <a [routerLink]="['/elections', election.id, 'results']" class="btn btn-ghost btn-sm">Live results</a>
+                    }
                   </div>
                 </div>
               }
@@ -257,7 +259,7 @@ import { ElectionService, Election } from '../../core/services/election.service'
   `],
 })
 export class DashboardComponent implements OnInit {
-  private auth     = inject(AuthService);
+  auth             = inject(AuthService);
   private elecSvc  = inject(ElectionService);
 
   user              = this.auth.user;
@@ -300,5 +302,15 @@ export class DashboardComponent implements OnInit {
     const h    = Math.floor(ms / 3_600_000);
     const m    = Math.floor((ms % 3_600_000) / 60_000);
     return h > 0 ? `${h}h ${m}m left` : `${m}m left`;
+  }
+
+  truncateWords(text: string | null | undefined, maxWords: number): string {
+    const fallback = 'Cast your vote before the election closes.';
+    const source = (text ?? '').trim();
+    if (!source) return fallback;
+
+    const words = source.split(/\s+/);
+    if (words.length <= maxWords) return source;
+    return `${words.slice(0, maxWords).join(' ')}...`;
   }
 }

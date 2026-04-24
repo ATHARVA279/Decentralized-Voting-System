@@ -34,11 +34,21 @@ import { AuthService }    from '../../../core/services/auth.service';
             @if (election()!.status === 'active') {
               <a [routerLink]="['/elections', election()!.id, 'vote']" class="btn btn-primary btn-lg"><i class="ri-checkbox-circle-line"></i> Vote Now</a>
             }
-            @if (election()!.status === 'active' || election()!.status === 'completed') {
+            @if (canViewResults()) {
               <a [routerLink]="['/elections', election()!.id, 'results']" class="btn btn-secondary"><i class="ri-bar-chart-box-line"></i> Results</a>
+            }
+            @if (canPublishResults()) {
+              <button type="button" class="btn btn-primary" [disabled]="publishing()" (click)="publishResults()">
+                @if (publishing()) { <span class="spinner"></span> }
+                {{ publishing() ? 'Publishing…' : 'Publish Results' }}
+              </button>
             }
           </div>
         </div>
+
+        @if (message()) {
+          <div class="alert alert-success" style="margin-bottom: 1.25rem;">{{ message() }}</div>
+        }
 
         <div class="candidates-section">
           <h2>Candidates ({{ candidates().length }})</h2>
@@ -80,11 +90,49 @@ export class ElectionDetailComponent implements OnInit {
   election   = signal<Election | null>(null);
   candidates = signal<Candidate[]>([]);
   loading    = signal(true);
+  publishing = signal(false);
+  message    = signal('');
 
   ngOnInit() {
     const id = this.route.snapshot.paramMap.get('id')!;
     this.elecSvc.get(id).subscribe(e => { this.election.set(e); this.loading.set(false); });
     this.elecSvc.getCandidates(id).subscribe(c => this.candidates.set(c));
+  }
+
+  canViewResults() {
+    const election = this.election();
+    if (!election) return false;
+    if (election.status === 'active') return election.is_public_results;
+    if (election.status === 'completed') return election.is_public_results || election.results_published;
+    return false;
+  }
+
+  canPublishResults() {
+    const election = this.election();
+    return !!election
+      && this.auth.isAdmin()
+      && election.status === 'completed'
+      && !election.is_public_results
+      && !election.results_published;
+  }
+
+  publishResults() {
+    const election = this.election();
+    if (!election || !this.canPublishResults()) return;
+
+    this.publishing.set(true);
+    this.message.set('');
+    this.elecSvc.publishResults(election.id).subscribe({
+      next: (updated) => {
+        this.election.set(updated);
+        this.message.set('Results are now published for voters.');
+        this.publishing.set(false);
+      },
+      error: () => {
+        this.message.set('');
+        this.publishing.set(false);
+      },
+    });
   }
 
   formatDate = (d: string) => new Date(d).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' });

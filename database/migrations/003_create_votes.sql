@@ -35,7 +35,7 @@ CREATE OR REPLACE VIEW v_election_results AS
         ROUND(
             COUNT(v.id) * 100.0 /
             NULLIF(SUM(COUNT(v.id)) OVER (PARTITION BY e.id), 0),
-        2) AS vote_percentage
+        2)::DOUBLE PRECISION AS vote_percentage
     FROM elections e
     JOIN candidates c ON c.election_id = e.id
     JOIN users u ON c.user_id = u.id

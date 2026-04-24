@@ -1,6 +1,6 @@
 import { Component, OnInit, inject, signal } from '@angular/core';
 import { CommonModule }    from '@angular/common';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
 import { ElectionService, Candidate, Election } from '../../../core/services/election.service';
 import { VoteService }     from '../../../core/services/vote.service';
 
@@ -111,7 +111,6 @@ import { VoteService }     from '../../../core/services/vote.service';
 })
 export class BallotComponent implements OnInit {
   private route   = inject(ActivatedRoute);
-  private router  = inject(Router);
   private elecSvc = inject(ElectionService);
   private voteSvc = inject(VoteService);
 
@@ -148,7 +147,6 @@ export class BallotComponent implements OnInit {
         this.success.set('Your vote has been recorded! Hash: ' + res.vote_hash.substring(0, 12) + '…');
         this.alreadyVoted.set(true);
         this.casting.set(false);
-        setTimeout(() => this.router.navigate(['/elections', this.election()!.id, 'results']), 2500);
       },
       error: e => {
         this.error.set(e.error?.error ?? 'Vote failed. Please try again.');

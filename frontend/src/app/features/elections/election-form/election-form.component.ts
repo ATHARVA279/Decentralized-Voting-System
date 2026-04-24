@@ -94,8 +94,8 @@ import { forkJoin } from 'rxjs';
             <h3>Settings</h3>
             <div class="toggle-row">
               <div>
-                <div style="font-weight:600;font-size:0.9rem;">Public Results</div>
-                <div class="text-muted text-sm">Allow anyone to view results during and after the election</div>
+                <div style="font-weight:600;font-size:0.9rem;">Live Results</div>
+                <div class="text-muted text-sm">If off, results stay hidden until an admin publishes them after the election ends</div>
               </div>
               <label class="toggle">
                 <input type="checkbox" name="is_public_results" [(ngModel)]="form.is_public_results">
@@ -147,7 +147,7 @@ export class ElectionFormComponent {
   private authSvc = inject(AuthService);
   private router  = inject(Router);
 
-  form = { title: '', description: '', start_time: '', end_time: '', is_public_results: true };
+  form = { title: '', description: '', start_time: '', end_time: '', is_public_results: false };
   loading = signal(false);
   error   = signal('');
   success = signal('');

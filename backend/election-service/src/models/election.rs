@@ -25,6 +25,7 @@ pub struct Election {
     pub status:           ElectionStatus,
     pub created_by:       Uuid,
     pub is_public_results: bool,
+    pub results_published: bool,
     pub created_at:       DateTime<Utc>,
     pub updated_at:       DateTime<Utc>,
 }
@@ -79,4 +80,22 @@ pub struct AddCandidateRequest {
     pub user_id:    Uuid,
     pub manifesto:  Option<String>,
     pub position:   Option<String>,
+}
+
+#[derive(Debug, Deserialize, Validate)]
+pub struct CreateElectionWithCandidatesRequest {
+    #[validate]
+    pub election:   CreateElectionRequest,
+    pub candidates: Vec<AddCandidateRequest>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UpdateElectionStatusRequest {
+    pub status: ElectionStatus,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PurgeElectionsRequest {
+    pub confirm: String,
+    pub include_completed: Option<bool>,
 }

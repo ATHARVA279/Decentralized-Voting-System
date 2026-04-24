@@ -34,24 +34,31 @@ pub async fn cast_vote(
         return Err(AppError::DuplicateVote);
     }
 
-    // 2. Verify election is active
+    // 2. Verify election is within the voting window
     #[derive(sqlx::FromRow)]
     struct ElectionStatusRow {
         status: Option<String>,
+        start_time: chrono::DateTime<chrono::Utc>,
         end_time: chrono::DateTime<chrono::Utc>,
     }
 
     let election = sqlx::query_as::<_, ElectionStatusRow>(
-        "SELECT status::text as status, end_time FROM elections WHERE id = $1"
+        "SELECT status::text as status, start_time, end_time FROM elections WHERE id = $1"
     )
     .bind(req.election_id)
     .fetch_optional(&state.db)
     .await?
     .ok_or(AppError::NotFound("Election not found".into()))?;
 
-    if election.status.as_deref() != Some("active") {
+    let now = Utc::now();
+
+    if election.status.as_deref() == Some("cancelled") {
+        return Err(AppError::InvalidOperation("Election is cancelled".into()));
+    }
+
+    if now < election.start_time || now > election.end_time {
         return Err(AppError::InvalidOperation(
-            format!("Election is not active (status: {:?})", election.status)
+            format!("Election is outside the voting window (status: {:?})", election.status)
         ));
     }
 
