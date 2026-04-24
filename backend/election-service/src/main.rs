@@ -53,8 +53,7 @@ async fn main() -> anyhow::Result<()> {
     let app = Router::new()
         .route("/health", get(handlers::health::health_check))
         .route("/ready",  get(handlers::health::readiness_check))
-        .nest(
-            "/api/elections",
+        .merge(
             election_routes().route_layer(axum::middleware::from_fn_with_state(
                 state.clone(),
                 mw::require_auth,
@@ -75,17 +74,14 @@ async fn main() -> anyhow::Result<()> {
 
 fn election_routes() -> Router<Arc<AppState>> {
     Router::new()
-        // Election CRUD
-        .route("/",                          get(handlers::election::list_elections))
-        .route("/",                          post(handlers::election::create_election))
-        .route("/:id",                       get(handlers::election::get_election))
-        .route("/:id",                       put(handlers::election::update_election))
-        .route("/:id",                       delete(handlers::election::delete_election))
+        // Election CRUD - support both trailing and non-trailing slashes
+        .route("/api/elections",             get(handlers::election::list_elections).post(handlers::election::create_election))
+        .route("/api/elections/",            get(handlers::election::list_elections).post(handlers::election::create_election))
+        .route("/api/elections/:id",         get(handlers::election::get_election).put(handlers::election::update_election).delete(handlers::election::delete_election))
         // Candidates management
-        .route("/:id/candidates",            get(handlers::election::list_candidates))
-        .route("/:id/candidates",            post(handlers::election::add_candidate))
-        .route("/:id/candidates/:cid",       delete(handlers::election::remove_candidate))
+        .route("/api/elections/:id/candidates",      get(handlers::election::list_candidates).post(handlers::election::add_candidate))
+        .route("/api/elections/:id/candidates/:cid", delete(handlers::election::remove_candidate))
         // Results
-        .route("/:id/results",               get(handlers::election::get_results))
-        .route("/:id/participation",         get(handlers::election::get_participation))
+        .route("/api/elections/:id/results",         get(handlers::election::get_results))
+        .route("/api/elections/:id/participation",   get(handlers::election::get_participation))
 }

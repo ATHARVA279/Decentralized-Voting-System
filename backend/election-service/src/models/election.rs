@@ -6,6 +6,7 @@ use validator::Validate;
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq)]
 #[sqlx(type_name = "election_status", rename_all = "lowercase")]
+#[serde(rename_all = "lowercase")]
 pub enum ElectionStatus {
     Draft,
     Upcoming,

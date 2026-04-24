@@ -89,7 +89,6 @@ async fn main() -> anyhow::Result<()> {
 
 fn vote_routes() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/cast",                get(handlers::vote::cast_vote).post(handlers::vote::cast_vote))
         .route("/cast",                post(handlers::vote::cast_vote))
         .route("/status/:election_id", get(handlers::vote::vote_status))
         .route("/audit/:election_id",  get(handlers::vote::audit_trail))

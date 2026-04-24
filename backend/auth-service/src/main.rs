@@ -42,13 +42,33 @@ async fn main() -> anyhow::Result<()> {
         .expect("JWT_SECRET must be set");
     let port = std::env::var("PORT").unwrap_or_else(|_| "3001".into());
 
-    // PostgreSQL connection pool
-    let db_pool = PgPoolOptions::new()
-        .max_connections(20)
-        .min_connections(2)
-        .acquire_timeout(Duration::from_secs(10))
-        .connect(&database_url)
-        .await?;
+    // PostgreSQL connection pool — retry loop handles transient DNS failures at startup
+    let db_pool = {
+        let mut last_err = None;
+        let mut pool = None;
+        for attempt in 1..=10u32 {
+            match PgPoolOptions::new()
+                .max_connections(20)
+                .min_connections(2)
+                .acquire_timeout(Duration::from_secs(10))
+                .connect(&database_url)
+                .await
+            {
+                Ok(p) => {
+                    pool = Some(p);
+                    break;
+                }
+                Err(e) => {
+                    tracing::warn!(attempt, error = %e, "DB connect failed, retrying in 3s…");
+                    last_err = Some(e);
+                    tokio::time::sleep(Duration::from_secs(3)).await;
+                }
+            }
+        }
+        pool.ok_or_else(|| {
+            anyhow::anyhow!("Failed to connect to DB after 10 attempts: {:?}", last_err)
+        })?
+    };
 
     tracing::info!("Connected to PostgreSQL");
 
